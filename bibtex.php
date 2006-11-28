@@ -1,4 +1,4 @@
-<?php define('rcsid', '$Id: bibtex.php,v 1.2 2006/11/16 22:00:37 dyuret Exp dyuret $');
+<?php define('rcsid', '$Id: bibtex.php,v 1.3 2006/11/16 23:33:28 dyuret Exp dyuret $');
 
 /** TODO: */
 # add, remove keyword
@@ -144,7 +144,7 @@ function search_page() {
 function index_page() {
   global $input_Index;
   html_print("<p><b>Index of ${input_Index}s</b> &nbsp; ");
-  html_print('(Click on a value to see its entries, click on the asterisk to edit)');
+  html_print('(Click on an asterisk to edit a value)');
   html_print('</p><p>');
   $uniq_vals = sql_uniq($input_Index);
   sort($uniq_vals);
@@ -204,7 +204,7 @@ function input_field($field, $value, $index) {
       html_print("<option>$f</option>");
     html_print('</select>');
   }
-  html_input("v$index", $value, 'text');
+  html_input("v$index", $value, 'text', array('size' => 40));
   html_print('<br/>');
 }
   
