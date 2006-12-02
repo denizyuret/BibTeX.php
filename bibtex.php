@@ -1,19 +1,11 @@
-<?php define('rcsid', '$Id: bibtex.php,v 1.4 2006/11/28 11:08:51 dyuret Exp dyuret $');
+<?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
+define('rcsid', '$Id: bibtex.php,v 1.5 2006/11/29 04:22:54 dyuret Exp dyuret $');
 
-/** TODO: */
-# add, remove keyword
-# edit, copy
-# editval
-# export all
-# authentication
-# user, time, delete fields - not doing
-# lost the sort function
- 
-/** Installation */
-# To use this code you need to create a database table in mysql with:
-# CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), INDEX(entryid), INDEX(value));
-# And set the following values:
-
+/** Installation instructions.
+ * To use this program you need to create a database table in mysql with:
+ * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), INDEX(entryid), INDEX(value));
+ * And set the following parameters:
+ */
 $mysql = array
 (
  'host'  => 'localhost',
@@ -23,364 +15,450 @@ $mysql = array
  'table' => 'bibtex'
  );
  
-/** main: generates top level page structure. */
-
+/** main() generates top level page structure. 
+ * $_fn gives the name of the page generation function.
+ * Variables starting with '_' are REQUEST variables.
+ */
 function main() {
   // session_start();
   // error_reporting(E_ALL);
 
   import_request_variables('gp', '_');
+  global $_fn, $html_header, $html_footer;
   sql_init();
-  if ($_REQUEST['select'] == 'bibtex') {
+  if ($_fn == 'bibtex') {
     // for export, we need to output text, not html.
     // so do this before we start generating html:
-    bibtex();
+    $_fn();
   } else {
-    html_header();
-    navbar();
-    foreach(array('search', 'field', 'select', 'editval', 'index', 'new') as $fn) {
-      if ($_REQUEST[$fn]) { 
-	// echo $fn;
-	$fn(); $page = 1; break; 
-      }
-    }
-    if (!$page) navbar();
-    // print_r($_REQUEST);
-    // phpinfo();
-    html_footer();
+    echo $html_header;
+    echo navbar();
+    if ($_fn) $_fn();
+    //print_r($_REQUEST);
+    //phpinfo();
+    echo $html_footer;
   }
   sql_term();
 }
  
-/** navbar: generates the menu at the top. */
+/** navbar() generates the menu at the top. 
+ */
 function navbar() {
-  html_print('<table><tr valign="top">');
-  navbar_search();
-  navbar_index();
-  navbar_new();
-  navbar_sort();
-  html_print('</tr></table>');
+  return
+    h('table',
+      h('tr', array('valign' => 'top'),
+	h('td', navbar_search()).
+	h('td', navbar_index()).
+	h('td', navbar_new()).
+	h('td', navbar_sort())));
 }
 
 function navbar_search() {
-  html_print('<td>');
-  html('form', '', 'action', 'bibtex.php');
-  html('input', NULL, 'type', 'text', 'name', 'search', 'value', 'Search', 
-       'onclick', "if(value=='Search'){value='';}");
-  html_print('</form></td>');
+  $attr['onclick'] = "if(value == 'Search'){value = ''}";
+  return h_form(h_hidden('fn', 'search'),
+		h_text('pattern', 'Search', $attr));
+		
 }
 
 function navbar_index() {
   global $uniq_fields;
   if (!isset($uniq_fields)) $uniq_fields = sql_uniq(NULL);
-  html_print('<td>');
   sort($uniq_fields);
-  html_form('index', $uniq_fields, 'select');
-  html_print('</td>');
+  return h_form(h_hidden('fn', 'index'),
+		h_select('field', $uniq_fields, 'Index', 'submit()'));
+		
 }
 
 function navbar_new() {
   global $entry_types;
-  html_print('<td>');
   $uniq_types = array_keys($entry_types);
   sort($uniq_types);
   array_unshift($uniq_types, 'Import BibTeX');
-  html_form('new', $uniq_types, 'select');
-  html_print('</td>');
+  return h_form(h_hidden('fn', 'new_entry'),
+		h_select('type', $uniq_types, 'New', 'submit()'));
 }
  
 function navbar_sort() {
-  global $_search, $_value, $_field, $uniq_fields;
+  global $_fn, $_pattern, $_field, $_value, $uniq_fields;
   if (!isset($uniq_fields)) $uniq_fields = sql_uniq(NULL);
-  html_print('<td>');
-  if ($_search)
-    html_form('search', $_search, 'hidden',
-	      'sort', $uniq_fields, 'select');
-	      
-  elseif ($_value)
-    html_form('field', $_field, 'hidden',
-	      'value', $_value, 'hidden',
-	      'sort', $uniq_fields, 'select');
-  html_print('</td>');
+  if ($_fn == 'search')
+    return h_form(h_hidden('fn', 'search'),
+		  h_hidden('pattern', $_pattern),
+		  h_select('sort', $uniq_fields, 'Sort', 'submit()'));
+  elseif ($_fn == 'select')
+    return h_form(h_hidden('fn', 'select'),
+		  h_hidden('field', $_field),
+		  h_hidden('value', $_value),
+		  h_select('sort', $uniq_fields, 'Sort', 'submit()'));
 }
-
-/** selection_form(select, title) 
+ 
+/** selection_form($select, $title) generates the entry selection form.
  * select is an array[entryid][field]=value(s)
  * title is the title of the page
+ * TODO: convert to new html routines.
  */
 function selection_form($select, $title) {
   $nselect = count($select);
-  if ($nselect == 0)
-    return html_print('<p><b>$title</b></p>');
+  if ($nselect == 0) {
+    echo h('p', h('b', $title));
+    return;
+  }
+  echo h_start('form', array('action' => 'bibtex.php',
+			     'name' => 'selection_form',
+			     'method' => 'get'));
+  echo h_hidden('fn', 'show');
+  echo h_hidden('nselect', $nselect);
 
-  html('form', '', 'action', 'bibtex.php', 
-       'name', 'selection_form', 'method', 'get');
-  html_input('select', 'show', 'hidden');
-  html_input('nselect', $nselect, 'hidden');
-
-  html_print('<p>');
-  html('b', $title);
-  html_print('&nbsp; Select: ');
-  html('a', 'All', 'href', 'javascript:checkAll(true)'); 
-  html('a', 'None', 'href', 'javascript:checkAll(false)');
-  html('a', 'Show', 'href', 'javascript:show()');
-  html('a', 'Delete', 'href', 'javascript:confirmDelete()');
-  html('a', 'BibTeX', 'href', 'javascript:bibtex()');
-  html('a', 'Addkey', 'href', 'javascript:keyword("addkey")');
-  html('a', 'Delkey', 'href', 'javascript:keyword("delkey")');
+  echo h_start('p');
+  echo h('b', $title);
+  echo '&nbsp; Select: ';
+  echo h_a('All', 'javascript:checkAll(true)')."\n"; 
+  echo h_a('None', 'javascript:checkAll(false)')."\n";
+  echo '&nbsp; Action: ';
+  echo h_a('Show', 'javascript:show()')."\n";
+  echo h_a('BibTeX', 'javascript:bibtex()')."\n";
+  echo h_a('Delete', 'javascript:confirmDelete()')."\n&nbsp;\n";
   $uniq_keywords = sql_uniq('keywords');
   sort($uniq_keywords);
-  html_select('keyword', 'Keyword', $uniq_keywords, '');
-  html_print('</p><p>');
+  echo h_select('keyword', $uniq_keywords, 'Keyword');
+  echo h_a('Addkey', "javascript:keyword('addkey')")."\n";
+  echo h_a('Delkey', "javascript:keyword('delkey')")."\n";
+  echo h_end('p');
 
+  echo h_start('p');
   $ordered = array_map("select_sort_field", $select);
   asort($ordered);
   $n = 0;
   foreach ($ordered as $entryid => $ignore) 
     print_entry($select[$entryid], $entryid, ++$n);
-  html_print('</p></form>');
+  echo h_end('p');
+  echo h_end('form');
 }
-
-/*** search: generates result of a search request. */
+ 
+function select_sort_field(&$entry) {
+  global $_sort;
+  if ($_sort) $key = $_sort;
+  else $key = 'author';
+  $ans = $entry[$key];
+  if (!isset($ans) and $key == 'author')
+    $ans = $entry['editor'];
+  if (is_array($ans)) $ans = $ans[0];
+  return $ans;
+}
+ 
+/** search($_pattern) generates result of a search request. 
+ * Request: fn=search&pattern=yuret
+ */
 function search() {
-  global $_search;
-  if (!isset($_search)) 
-    return navbar();
-  $select = sql_search($_search);
+  global $_pattern;
+  if (!isset($_pattern)) 
+    return;
+  $select = sql_search($_pattern);
   $nselect = count($select);
-  selection_form($select, "Search = $_search ($nselect results)");
+  selection_form($select, "Search = $_pattern ($nselect results)");
 }
-
-/*** field: finds entries with field = value */
-function field() {
+ 
+/** select($_field, $_value) finds entries with field = value.
+ * Request: fn=select&field=author&value=Katz%2C+Boris
+ */
+function select() {
   global $_value, $_field;
   if (!isset($_value) or !isset($_field)) 
-    return navbar();
+    return;
   $select = sql_select($_field, $_value);
   $nselect = count($select);
   selection_form($select, "$_field = $_value ($nselect results)");
 }
-
-/*** select: processes entries which the user has selected */
-function select() {
-  global $_select, $_nselect;
-  if (!isset($_nselect) or !isset($_select)) return navbar();
-  $ids = get_selection($_nselect);
-  if (!count($ids)) return navbar();
-  $_select($ids);
-}
-
-function get_selection($n) {
-  $entryids = array();
-  for ($i = 1; $i <= $n; $i++) {
-    $entryid = $_REQUEST["e$i"];
-    if ($entryid) $entryids[] = $entryid;
-  }
-  return $entryids;
-}
-
+ 
+/** show() shows the subset of entries which the user has selected.
+ * Request: fn=show&nselect=9&keyword=&e1=3722&e3=3714&e5=3553
+ * Uses get_selection to collect the selected entries.
+ */
 function show($ids) {
-  $select = sql_list($ids);
+  $ids = get_selection();
+  if (!$ids) return;
+  $select = sql_select_list($ids);
   $nselect = count($select);
   selection_form($select, "$nselect entries selected");
 }
-
-/** index: prints a set of unique values for a given field.
- * _Index: contains the name of the field.
- * The user can pick a value to select a list of entries,
- * or click on the adjacent asterisk to edit the value.
- */
-function index() {
-  global $_index;
-  $plural = $_index;
-  if ($plural[strlen($plural)-1] != 's') $plural .= 's';
-  html_print("<p><b>Index of $plural</b> &nbsp; ");
-  html_print('(Click on an asterisk to edit a value)');
-  html_print('</p><p>');
-  $uniq_vals = sql_uniq($_index);
-  sort($uniq_vals);
-  foreach ($uniq_vals as $v) {
-    $vn = urlencode($v);
-    html_a($v, "?field=$_index&value=$vn"); echo ' ';
-    html_a('*', "?editval=$vn&in=$_index"); echo ' ';
-  }
-  html_print('</p>');
-}
  
-/** editval */
-function editval() {
-  global $_editval, $_in;
-  html_print('<p><form action="bibtex.php">');
-  html_input('SubVal', 'Replace', 'submit');
-  html_print(" all <b>$_in = $_editval</b> with <b>$_in =</b> ");
-  html_input('newval', '', 'text');
-  html_input('in', $_in, 'hidden');
-  html_input('oldval', $_editval, 'hidden');
-  html_print('</form></p><p><form action="bibtex.php">');
-  html_input('DelVal', 'Delete', 'submit');
-  html_input('in', $_in, 'hidden');
-  html_input('oldval', $_editval, 'hidden');
-  html_print(" all fields where <b>$_in = $_editval</b>.");
-  html_print('</form></p>');
-}
- 
-/** delval */
-function delval() {
-  global $_in, $_oldval;
-  if (!isset($_in) or !isset($_oldval)) return;
-  $select = sql_select($_in, $_oldval);
-  $nselect = count($select);
-  if ($nselect == 0) {
-    html_print("<p>There are no entries with <b>$_in = $_oldval</b></p>");
-    return;
-  }
-  html_print("<p>Are you sure you want to remove the field <b>$_in = $_oldval</b> from the following $nselect entries?</p>");
-  html('form', '', 'action', 'bibtex.php');
-  html_input('DoDelVal', 'Delete', 'submit');
-  html_input('Cancel', 'Cancel', 'submit');
-  html_input('in', $_in, 'hidden');
-  html_input('oldval', $_oldval, 'hidden');
-  html_print('<p>');
-  foreach ($select as $entry)
-    print_entry($entry);
-  html_print('</p></form>');
-}
-
-/** dodelval */
-function dodelval() {
-  global $_in, $_oldval, $mysql;
-  if (!isset($_in) or !isset($_oldval)) return;
-  $select = sql_select($_in, $_oldval);
-  $nselect = count($select);
-  if ($nselect == 0) {
-    html_print("<p>There are no entries with <b>$_in = $_oldval</b></p>");
-    return;
-  }
-  $entryids = array_keys($select);
-  $in = mysql_real_escape_string($_in);
-  $value = mysql_real_escape_string($_oldval);
-  $table = $mysql['table'];
-  $query = "DELETE FROM $table WHERE field='$in' AND value='$value'";
-  $result = sql_query($query);
-  print_r($entryids);
-}
-
-/** new_entry: Creates a new entry
- * _New: gives the type of entry
- */
-function new_entry() {
-  global $entry_types, $_New, $extra_fields;
-
-  $fields = $entry_types[$_New];
-  if (is_null($fields)) 
-    return import();
-  html_print('<form method="post" action="bibtex.php">');
-  html_print("<p><b>New $_New entry &nbsp; ");
-  html_input('Insert', 'Submit', 'submit');
-  html_print('</b></p><p>');
-
-  html('b', 'Required fields'); html('br');
-  $nf = 1;
-  html_input("f$nf", 'entrytype', 'hidden');
-  html_input("v$nf", $_New, 'hidden');
-  _field('citekey', NULL, ++$nf);
-  foreach ($fields['required'] as $f)
-    _field($f, NULL, ++$nf);
-  html_print('</p><p>');
-
-  html('b', 'Extra fields'); html('br');
-  foreach ($extra_fields as $f)
-    _field($f, NULL, ++$nf);
-  html_print('</p><p>');
-
-  html('b', 'Additional authors, keywords, urls or other fields'); html('br');
-  html('b', '(Please enter multiple authors etc. on separate lines)'); html('br');
-  for ($i = 1; $i <= 5; $i++)
-    _field(NULL, NULL, $nf++);
-  html_print('</p><p>');
-
-  html('b', 'Optional fields'); html('br');
-  foreach ($fields['optional'] as $f)
-    _field($f, NULL, ++$nf);
-  html_print('</p></form>');
-}
-
-function _field($field, $value, $index) {
-  if (!is_array($field)) html_input("f$index", $field, 'text', array('size' => 10));
-  else {
-    html_print("<select name=\"f$index\" size=\"1\">");
-    foreach ($field as $f)
-      html_print("<option>$f</option>");
-    html_print('</select>');
-  }
-  html_input("v$index", $value, 'text', array('size' => 40));
-  html_print('<br/>');
-}
-  
-/** import */
-function import() {
-
-}
- 
-/** addkey */
-function addkey() {
-
-}
- 
-/** delkey */
-function delkey() {
-
-}
- 
-/** bibtex */
-function bibtex() {
+function get_selection() {
   global $_nselect;
-  header('Content-type: text/plain');
-  print_r($_REQUEST);
+  if (!isset($_nselect)) return;
   $entryids = array();
   for ($i = 1; $i <= $_nselect; $i++) {
     $entryid = $_REQUEST["e$i"];
     if ($entryid) $entryids[] = $entryid;
   }
-  print_r($entryids);
-  $entries = sql_list($entryids);
-  foreach ($entries as $e)
-    print_r($e);
+  return $entryids;
 }
  
-/** delete */
+/** bibtex() exports selected entries to bibtex format.
+ * Request: select=bibtex&nselect=3&keyword=&e1=3722&e2=3714&e3=3553
+ * TODO: implement bibtex format output.
+ */
+function bibtex() {
+  $ids = get_selection();
+  if (!$ids) return;
+  header('Content-type: text/plain');
+  print_r($_REQUEST);
+  $entries = sql_select_list($ids);
+  foreach ($entries as $entry) {
+    print_r($entry);
+  }
+}
+ 
+/** delete() deletes the selected entries.
+ * Request: select=delete&nselect=3&keyword=&e1=3722&e2=3714&e3=3553
+ */
 function delete() {
-
+  $ids = get_selection();
+  if (!$ids) return;
+  sql_delete_list($ids);
+  echo h_script('window.location.replace("' .
+		$_SERVER["HTTP_REFERER"] . '");');
 }
  
-/** edit */
-function edit() {
-
+/** addkey($_keyword): adds the keyword to selected entries.
+ * Request: select=addkey&nselect=3&keyword=AI&e1=419&e2=561&e3=903
+ * TODO: do google style single list for add/del keyword.
+ */
+function addkey() {
+  global $_keyword;
+  $ids = get_selection();
+  if (!$ids) return;
+  $entries = sql_select_list($ids);
+  foreach ($entries as $id => $entry)
+    if (!has_keyword($entry, $_keyword))
+      sql_insert_field($id, 'keywords', $_keyword);
+  show($ids);
 }
  
-/** copy */
-/*
-function copy() {
-
+function has_keyword($entry, $keyword) {
+  $keys = $entry['keywords'];
+  if (is_array($keys)) return in_array($keyword, $keys);
+  else return ($keyword == $keys);
 }
-*/
  
-/** print_entry: prints a single bibliography entry
+/** delkey($_keyword): deletes the keyword from selected entries.
+ * Request: select=delkey&nselect=3&keyword=AI&e1=419&e2=561&e3=903
+ */
+function delkey() {
+  global $_keyword;
+  $ids = get_selection();
+  if (!$ids) return;
+  $entries = sql_select_list($ids);
+  foreach ($entries as $id => $entry)
+    if (has_keyword($entry, $_keyword))
+      sql_delete_field($id, 'keywords', $_keyword);
+  show($ids);
+}
+ 
+/** index($_field): prints a set of unique values for a given field.
+ * Request: fn=index&field=keywords
+ * The user can pick a value to select a list of entries,
+ * or click on the box to modify a value.
+ */
+function index() {
+  global $_field;
+  $plural = $_field;
+  if ($plural[strlen($plural)-1] != 's') $plural .= 's';
+  echo h('p', h('b', "Index of $plural &nbsp;").
+	 h('small', "(Click on a value to select, click on a box to edit)"));
+  echo h_start('form', array('action' => 'bibtex.php', 'name' => 'index_form'));
+  echo h_hidden('fn', 'edit_value');
+  echo h_hidden('field', $_field);
+  echo h_hidden('newval', '');
+  $uniq_vals = sql_uniq($_field);
+  natcasesort($uniq_vals);
+  foreach ($uniq_vals as $v) {
+    echo h_checkbox('value', $v, "edit_value('$v')");
+    print_field($_field, $v);
+    echo h('br');
+  }
+  h_end('form');
+}
+ 
+/** edit_value($_field, $_value, $_newval): replace value with newval in field
+ * If newval == '' the value is deleted (second example).
+ * Request: fn=edit_value&field=editor&newval=AAA&value=Beal%2C+D.+F.
+ * Request: fn=edit_value&field=editor&newval=&value=Beal%2C+D.+F.
+ */
+function edit_value() {
+  global $_field, $_value, $_newval;
+  if ($_newval == '') {
+    sql_delete_value($_field, $_value);
+  } else {
+    sql_update_value($_field, $_value, $_newval);
+  }
+  index();
+}
+ 
+/** entry_form($entry, $id, $title): Form to create, copy or edit an entry.
+ * $entry must be an array with a valid entrytype defined.
+ * $id must be a valid entryid.
+ */
+function entry_form($entry, $id, $title) {
+  global $entry_types, $index_fields, $extra_fields, 
+    $entry_field_index, $entry_field_printed;
+  if (!isset($entry) or !isset($id)) return;
+  $type = $entry['entrytype'];
+  if (!$type) return;
+  $fields = $entry_types[$type];
+  if (!$fields) return;
+  echo h_start('form', array('action' => 'bibtex.php',
+			     'name' => 'entry_form',
+			     'method' => 'get'));
+  echo h('p',
+	 ($title ? h('b', $title).' &nbsp; ' : '').
+	 h_submit('Submit').
+	 h_button('Cancel', 'window.back()').
+	 h('br').'Please enter additional authors, keywords, etc. on separate lines.'.
+	 h_hidden('fn', 'insert').
+	 h_hidden('id', $id)
+	 );
+  echo h_start('p');
+  echo h('b', 'Required fields') . h('br');
+  $printed = array();
+  foreach ($index_fields as $f)
+    entry_field($entry, $f);
+  foreach ($fields['required'] as $f)
+    entry_field($entry, $f);
+  for ($i = 1; $i <= 3; $i++)
+    entry_field($entry, NULL, $printed);
+  echo h('b', 'Optional fields') . h('br');
+  foreach ($extra_fields as $f)
+    entry_field($entry, $f);
+  foreach ($fields['optional'] as $f)
+    entry_field($entry, $f);
+  foreach ($entry as $f => $v)
+    if (!$entry_field_printed[$f])
+      entry_field($entry, $f);
+  for ($i = 1; $i <= 3; $i++)
+    entry_field($entry, NULL);
+  echo h_hidden('nfield', $entry_field_index);
+  h_end('p');
+  h_end('form');
+}
+
+/* entry_field()
+ * complication: both the field and the value could be arrays.
+ * if field is array, value is null => print selection for field.
+ * if field is array, value is defined => print each value.
+ * if field is scalar, value is array => print multiple fields.
+ */
+$entry_field_index = 0;
+$entry_field_printed = array();
+function entry_field(&$entry, $field) {
+  global $entry_field_index, $entry_field_printed;
+  if (is_null($field)) {
+    $i = ++$entry_field_index;
+    entry_field_name("f$i", '');
+    entry_field_value("v$i", '');
+  } elseif (is_array($field)) {
+    $i0 = $entry_field_index;
+    foreach ($field as $f) {
+      if (isset($entry[$f])) {
+	entry_field($entry, $f);
+      }
+    }
+    if ($i0 == $entry_field_index) {
+      $i = ++$entry_field_index;
+      entry_field_name("f$i", $field);
+      entry_field_value("v$i", '');
+      $entry_field_printed[$field] = 1;
+    }
+  } elseif (isset($entry[$field])) {
+    $val = $entry[$field];
+    if (!is_array($val)) $val = array($val);
+    foreach ($val as $v) {
+      $i = ++$entry_field_index;
+      entry_field_name("f$i", $field);
+      entry_field_value("v$i", $v);
+    }
+    $entry_field_printed[$field] = 1;
+  } else {
+    $i = ++$entry_field_index;
+    entry_field_name("f$i", $field);
+    entry_field_value("v$i", '');
+    $entry_field_printed[$field] = 1;
+  }
+}
+
+function entry_field_name($name, $value) {
+  if (is_array($value))
+    echo h_select($name, $value);
+  else echo h_text($name, $value, array('size' => 10));
+}
+
+function entry_field_value($name, $value) {
+  echo h_text($name, $value, array('size' => 40)).h('br');
+}
+ 
+/** new_entry($_type): Creates a new entry of a given type.
+ * $_type: gives the type of entry
+ * if type == "Import BibTeX" then do import.
+ */
+function new_entry() {
+  global $_type;
+  if ($_type == 'Import BibTeX') return import();
+  $id = sql_newid();
+  entry_form(array('entrytype' => $_type), $id, 'New entry');
+}
+ 
+/** edit_entry() Modifies an existing entry.
+ */
+function edit_entry() {
+  global $_id;
+  $entries = sql_select_list(array($_id));
+  entry_form($entries[$_id], $_id, 'Edit entry');
+}
+ 
+/** copy_entry() Clones an existing entry.
+ */
+function copy_entry() {
+  global $_id;
+  $entries = sql_select_list(array($_id));
+  $newid = sql_newid();
+  entry_form($entries[$_id], $newid, 'Copy entry');
+}
+ 
+/** insert() */
+function insert() {
+  echo h('b', 'insert not implemented yet.');
+  print_r($_REQUEST);
+}
+ 
+/** import() */
+function import() {
+  echo h('b', 'import not implemented yet.');
+  print_r($_REQUEST);
+}
+ 
+/** print_entry($entry, $id, $n) prints a single bibliography entry.
  *   entry: is an array containing all fields and values
  *   entryid: is the uniq id for entry in the database
  *   n: used for generating the checkbox number
  */
 $entry_format = array
 (
- array('author', '_ ', 'print_author_field'),
- array('editor', '_ (ed.) ', 'print_author_field'),
- array('year', '(_). ', NULL),
+ array('author', '_. ', 'print_author_field'),
+ array('editor', '_. ', 'print_author_field'),
  array('title', '_. ', 'print_title_field'),
- array('journal', '<i>_</i>. ', NULL),
- array('booktitle', 'In <i>_</i>. ', NULL),
- array('publisher', '_. ', NULL),
+ array('url', '_ ', 'print_url_field'),
+
+ array('journal', '<i>_</i>, ', NULL),
+ array('booktitle', 'In <i>_</i>, ', NULL),
+ array('organization', '_, ', NULL),
+ array('school', '_, ', NULL),
+ array('institution', '_, ', NULL),
+ array('howpublished', '_, ' , NULL),
+ array('publisher', '_, ', NULL),
+
+ array('year', '_. ', NULL),
  array('keywords', '[_] ', NULL),
- array('url', '_ ', 'print_url_field')
+# array('entrytype', '[_:', NULL),
+# array('citekey', '_] ', NULL),
 );
 
 function print_entry(&$entry, $entryid, $n) {
@@ -398,13 +476,20 @@ function print_entry(&$entry, $entryid, $n) {
     $pattern = explode('_', $pattern);
     echo $pattern[0];
     $print_fn = $fmt[2];
-    if (!isset($print_fn)) $print_fn = 'print_field';
-    $print_fn($entry, $field, $value);
+    if (!isset($print_fn)) print_field($field, $value);
+    else $print_fn($entry, $field, $value);
     echo $pattern[1];
   }
   if (isset($n)) {
-    html_get('<u>Edit</u>', 'Edit', $entryid); echo ' ';
-    html_get('<u>Copy</u>', 'Copy', $entryid);
+    echo h_get('edit',
+	       array('fn' => 'edit_entry',
+		     'id' => $entryid),
+	       array('class' => 'edit'));
+    echo ' ';
+    echo h_get('copy',
+	       array('fn' => 'copy_entry',
+		     'id' => $entryid),
+	       array('class' => 'edit'));
   }
   html_print('<br/>');
 }
@@ -416,25 +501,31 @@ function name_flip($str) {
 }
 
 function print_author_field(&$entry, $field, $value) {
-  if (!is_array($value)) html_get($value, 'field', $field, 'value', $value);
-  else {
+  if (!is_array($value)) {
+    print_field($field, $value, name_flip($value));
+    if ($field == 'editor') echo ', editor';
+  } else {
     $n = count($value);
-    $v = $value[0];
-    html_get($v, 'field', $field, 'value', $v);
-    for($i = 1; $i < $n - 1; $i++) {
-      $v = $value[$i]; echo ', ';
-      html_get(name_flip($v), 'field', $field, 'value', $v);
+    for ($i = 0; $i < $n; $i++) {
+      $v = $value[$i];
+      $txt = name_flip($v);
+      if ($v == 'others') {
+	echo ', et.al';
+      } else {
+	if ($i == $n - 1) echo ' and ';
+	elseif ($i > 0) echo ', ';
+	print_field($field, $v, $txt);
+      }
     }
-    $v = $value[$n - 1];
-    if ($v == 'others') echo ', et.al.';
-    else {
-      echo ' and ';
-      html_get(name_flip($v), 'field', $field, 'value', $v);
-    }
+    if ($field == 'editor') echo ', editors';
   }
 }
 
 function print_title_field(&$entry, $field, $value) {
+  $type = $entry['entrytype'];
+  if (in_array($type, array('book', 'inbook', 'manual', 'proceedings', 'phdthesis'))) {
+    $value = "<i>$value</i>";
+  }
   $url = $entry['url'];
   if (is_array($url)) $url = $url[0];
   if (isset($url)) html_a("$value", $url);
@@ -442,35 +533,149 @@ function print_title_field(&$entry, $field, $value) {
 }
 
 function print_url_field(&$entry, $field, $value) {
+  if (!is_array($value)) return;
+  for ($i = 1; $i < count($value); $i++) {
+    $attr['href'] = htmlspecialchars($value[$i]);
+    $attr['class'] = 'url';
+    echo ' '.h('a', $attr, 'url');
+  }
+}
+
+function print_field($field, $value, $txt, $attr) {
   if (is_array($value)) {
-    array_shift($value);
-    foreach($value as $url) {
-      if ($url != $value[0]) echo ', ';
-      html_a('URL', $url);
+    foreach($value as $v) {
+      if ($v != $value[0]) echo ', ';
+      print_field($field, $v, $txt, $attr);
     }
+  } else {
+    if (!isset($txt)) $txt = $value;
+    $txt = htmlspecialchars($txt);
+    echo h_get($txt, 
+	       array('fn' => 'select', 
+		     'field' => $field, 
+		     'value' => $value),
+	       array('class' => 'local'));
   }
-}
-
-function print_field(&$entry, $field, $value) {
-  if (!is_array($value)) html_get($value, 'field', $field, 'value', $value);
-  else foreach($value as $v) {
-    if ($v != $value[0]) echo ', ';
-    html_get($v, 'field', $field, 'value', $v);
-  }
-}
-
-function select_sort_field(&$entry) {
-  global $_sort;
-  if ($_sort) $key = $_sort;
-  else $key = 'author';
-  $ans = $entry[$key];
-  if (!isset($ans) and $key == 'author')
-    $ans = $entry['editor'];
-  if (is_array($ans)) $ans = $ans[0];
-  return $ans;
 }
  
 /** html functions */
+
+/* h() creates an html element string. 
+ * h($name): creates an empty element (e.g. <br/>)
+ * h($name, $array): creates an empty element with attr = array
+ * h($name, $string) creates element with content = string
+ * h($name, $array, $string) creates element with attr and content
+ * h($name, $array, true): creates a start tag with attributes
+ * h($name, true): creates a start tag
+ * h($name, false): creates an end tag
+ */
+function h($name, $attr, $content) {
+  if (!is_array($attr)) {
+    $content = $attr;
+    unset($attr);
+  }
+  $vals = '';
+  foreach ($attr as $aname => $value) {
+    $esc = htmlspecialchars($value);
+    $vals .= " $aname=\"$esc\"";
+  }
+  if (!isset($content)) 
+    return "<$name$vals/>\n";
+  elseif (is_bool($content))
+    return $content ? "<$name$vals>\n" : "</$name>\n";
+  else
+    return in_array($name, array('a', 'b', 'i', 'u', 'option')) ?
+      "<$name$vals>$content</$name>" :
+      "<$name$vals>\n$content</$name>\n";
+}
+
+function h_start($name, $attr) {
+  return isset($attr) ?
+    h($name, $attr, true) :
+    h($name, true);
+}
+
+function h_end($name) {
+  return h($name, false);
+}
+
+function h_hidden($name, $value) {
+  $attr['type'] = 'hidden';
+  $attr['name'] = $name;
+  $attr['value'] = $value;
+  return h('input', $attr);
+}
+
+function h_text($name, $value, $attr) {
+  $attr['type'] = 'text';
+  $attr['name'] = $name;
+  $attr['value'] = $value;
+  return h('input', $attr);
+}
+
+function h_submit($value, $name, $onclick) {
+  $attr['type'] = 'submit';
+  if (isset($value)) $attr['value'] = $value;
+  if (isset($name)) $attr['name'] = $name;
+  if (isset($onclick)) $attr['onclick'] = $onclick;
+  return h('input', $attr);
+}
+
+function h_button($value, $onclick) {
+  return h('input',
+	   array('type' => 'button', 
+		 'value' => $value, 
+		 'onclick' => $onclick));
+}
+
+function h_script($script) {
+  echo "<script><!--\n$script\n--></script>\n";
+}
+
+function h_checkbox($name, $value, $onchange) {
+  $attr = array
+    ('type' => 'checkbox', 'name' => $name, 'value' => $value);
+  if (isset($onchange)) $attr['onchange'] = $onchange;
+  return h('input', $attr);
+}
+
+function h_select($name, $values, $title, $onchange) {
+  if (!$title) $opts = '';
+  else $opts = h('option', array('value' => ''), $title)."\n";
+  foreach ($values as $value) {
+    $option = strlen($value) < 16 ? $value : substr($value, 0, 15) . '.';
+    $option = htmlspecialchars($option);
+    $opts .= h('option', array('value' => $value), $option)."\n";
+  }
+  $attr = array('name' => $name, 'size' => 1);
+  if ($onchange) $attr['onchange'] = $onchange;
+  return h('select', $attr, $opts);
+}
+
+function h_form() {
+  $n = func_num_args();
+  for ($i = 0; $i < $n; $i++) {
+    $arg = func_get_arg($i);
+    if ($i == 0 && is_array($arg)) $attr = $arg;
+    else $input .= $arg;
+  }
+  $attr['action'] = 'bibtex.php';
+  return h('form', $attr, $input);
+}
+
+function h_get($txt, $vars, $attr) {
+  $url = '?';
+  foreach($vars as $name => $value) {
+    if ($url != '?') $url .= '&';
+    $url .= urlencode($name) . '=' . urlencode($value);
+  }
+  return h_a($txt, $url, $attr);
+}
+
+function h_a($txt, $url, $attr) {
+  $attr['href'] = $url;
+  return h('a', $attr, $txt);
+}
 
 function html_print($str) { echo "$str\n"; }
 
@@ -588,12 +793,19 @@ function sql_term() {
   mysql_close($sql_link);
 }
 
-function sql_list($entryids) {
+function sql_select_list($entryids) {
   global $mysql;
   if (!$entryids) return;
   $query = sprintf("SELECT * FROM %s WHERE entryid IN (%s)",
 		   $mysql['table'], implode(', ', $entryids));
   return sql_entries($query);
+}
+
+function sql_delete_list($entryids) {
+  global $mysql;
+  if (!$entryids) return;
+  sql_query(sprintf("DELETE FROM %s WHERE entryid IN (%s)",
+		    $mysql['table'], implode(', ', $entryids)));
 }
 
 function sql_search($value) {
@@ -648,6 +860,52 @@ function sql_uniq($field) {
   return $answer;
 }
  
+function sql_insert_field($id, $field, $value) {
+  global $mysql;
+  $table = $mysql['table'];
+  $id = mysql_real_escape_string($id);
+  $field = mysql_real_escape_string($field);
+  $value = mysql_real_escape_string($value);
+  sql_query("INSERT INTO $table VALUES ('$id', '$field', '$value')");
+}
+
+function sql_delete_field($id, $field, $value) {
+  global $mysql;
+  $table = $mysql['table'];
+  $id = mysql_real_escape_string($id);
+  $field = mysql_real_escape_string($field);
+  $value = mysql_real_escape_string($value);
+  sql_query("DELETE FROM $table WHERE entryid = '$id' AND field = '$field' AND value = '$value'");
+}
+ 
+function sql_delete_value($field, $value) {
+  global $mysql;
+  $table = $mysql['table'];
+  $field = mysql_real_escape_string($field);
+  $value = mysql_real_escape_string($value);
+  sql_query("DELETE FROM $table WHERE field = '$field' AND value = '$value'");
+}
+
+function sql_update_value($field, $value, $newval) {
+  global $mysql;
+  $table = $mysql['table'];
+  $field = mysql_real_escape_string($field);
+  $value = mysql_real_escape_string($value);
+  $newval = mysql_real_escape_string($newval);
+  sql_query("UPDATE $table SET value = '$newval' WHERE field = '$field' AND value = '$value'");
+}
+ 
+function sql_newid() {
+  global $mysql;
+  $table = $mysql['table'];
+  $query = "SELECT MAX(entryid) FROM $table";
+  $result = sql_query($query);
+  $row = mysql_fetch_row($result);
+  $answer = $row[0] + 1;
+  mysql_free_result($result);
+  return $answer;
+}
+ 
 /** entry_types is the official specification for bibtex.  
  * In addition to these fields we have fields that are required for
  * every type: entrytype and citekey.  We have extra optional fields
@@ -655,7 +913,9 @@ function sql_uniq($field) {
  * keywords, not specified in bibtex standard.  Finally the program
  * will accept any new field typed by the user.
  */
-$extra_fields = array('keywords', 'url');
+$index_fields = array('entrytype', 'citekey');
+$extra_fields = array('url', 'keywords');
+$extra_optional_fields = array('key', 'crossref', 'annote');
 
 $entry_types = array
 (
@@ -713,20 +973,13 @@ $entry_types = array
  
 /** html_header */
 
-function html_header() {
-  echo '<?xml version="1.0" encoding="UTF-8"?>
+$html_header = '<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html 
      PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
      "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 <title>BibTeX</title>
-<style type="text/css">
-<!--
-A.local { text-decoration:none; color:black }
-P.tiny { font-size:xx-small }
--->
-</style>
 <script type="text/javascript">
 <!--
 function checkAll(val) {
@@ -758,7 +1011,7 @@ function show() {
   if (checked == 0) {
     alert("Please select some entries first.");
   } else with(document.selection_form) {
-    select.value = "show";
+    fn.value = "show";
     submit();
   }
 }
@@ -769,7 +1022,7 @@ function confirmDelete() {
     alert("Please select some entries first.");
   } else with(document.selection_form) {
     if (confirm("Are you sure you want to delete these " + checked + " entries?")) {
-      select.value = "delete";
+      fn.value = "delete";
       submit();
     }
   }
@@ -780,12 +1033,12 @@ function bibtex() {
   if ((checked > 0) ||
       (confirm("You have not made a selection.\nWould you like to export all entries in the database?")))
     with(document.selection_form) {
-      select.value = "bibtex";
+      fn.value = "bibtex";
       submit();
     }
 }
 
-function keyword(fn) {
+function keyword(func) {
   var checked = checkCnt();
   if (checked == 0) {
     alert("Please select some entries first.");
@@ -793,23 +1046,52 @@ function keyword(fn) {
     if (keyword.value == "") {
        alert("Please select a keyword.");
     } else {
-       select.value = fn;
+       fn.value = func;
        submit();
+    }
+  }
+}
+
+function edit_value(v) {
+  with(document.index_form) {
+    nv = prompt("Enter the value to use instead of "
+                + field.value + " = " + v +
+                "\n(leave blank to delete the value)\n");
+    if (nv != null) {
+      if (nv == "") {
+       msg = "Are you sure you want to delete all " + field.value +
+             " fields with value = " + v + "?";
+      } else {
+       msg = "Are you sure you want to replace all " + field.value +
+             "=\"" + v + "\" fields with " + field.value +
+             "=\"" + nv + "\"?";
+      }
+      if (confirm(msg)) {
+        newval.value = nv;
+        submit();
+      }
     }
   }
 }
 
 -->
 </script>
-</head><body>
+<style type="text/css">
+<!--
+A.local { text-decoration:none; color:black }
+A.url { font-variant:small-caps }
+A.edit { font-variant:small-caps; color:black }
+P.rcsid { font-size:xx-small }
+-->
+</style>
+</head>
+<body>
 ';
-}
 
-function html_footer() {
-  echo '<p class="tiny">'.rcsid.'</p>
-</body></html>
+$html_footer = '<p class="rcsid">'.rcsid.'</p>
+</body>
+</html>
 ';
-}
 
 main();
 
