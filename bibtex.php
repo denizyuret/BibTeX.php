@@ -1,9 +1,9 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.6 2006/12/02 17:51:01 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.7 2006/12/03 02:31:12 dyuret Exp dyuret $');
 
 /** Installation instructions.
  * To use this program you need to create a database table in mysql with:
- * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), INDEX(entryid), INDEX(value));
+ * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), s SERIAL, INDEX(entryid), INDEX(value));
  * And set the following parameters:
  */
 $mysql = array
@@ -18,6 +18,8 @@ $mysql = array
 /** main() generates top level page structure. 
  * $_fn gives the name of the page generation function.
  * Variables starting with '_' are REQUEST variables.
+ * BUG: This is very insecure, we need to check what $_fn is.
+ * TODO: separate read only actions from modifications.
  */
 function main() {
   // session_start();
@@ -95,7 +97,6 @@ function navbar_sort() {
 /** selection_form($select, $title) generates the entry selection form.
  * select is an array[entryid][field]=value(s)
  * title is the title of the page
- * TODO: convert to new html routines.
  */
 function selection_form($select, $title) {
   $nselect = count($select);
@@ -155,7 +156,7 @@ function search() {
     return;
   $select = sql_search($_pattern);
   $nselect = count($select);
-  selection_form($select, "Search = $_pattern ($nselect results)");
+  selection_form($select, "Search = $_pattern ($nselect entries)");
 }
  
 /** select($_field, $_value) finds entries with field = value.
@@ -167,7 +168,7 @@ function select() {
     return;
   $select = sql_select($_field, $_value);
   $nselect = count($select);
-  selection_form($select, "$_field = $_value ($nselect results)");
+  selection_form($select, "$_field = $_value ($nselect entries)");
 }
  
 /** show() shows the subset of entries which the user has selected.
@@ -179,7 +180,7 @@ function show($ids) {
   if (!$ids) return;
   $select = sql_select_list($ids);
   $nselect = count($select);
-  selection_form($select, "$nselect entries selected");
+  selection_form($select, "$nselect entries");
 }
  
 function get_selection() {
@@ -196,6 +197,7 @@ function get_selection() {
 /** bibtex() exports selected entries to bibtex format.
  * Request: select=bibtex&nselect=3&keyword=&e1=3722&e2=3714&e3=3553
  * TODO: implement bibtex format output.
+ * TODO: implement export all.
  */
 function bibtex() {
   $ids = get_selection();
@@ -316,7 +318,7 @@ function entry_form($entry, $title, $id) {
 	 h_submit('Submit').
 	 h_button('Cancel', 'window.back()').
 	 h_submit('Don\'t check errors', 'nocheck').
-	 h('br').'Please enter additional authors, keywords, etc. on separate lines.'
+	 h('br').'Please enter additional authors, editors, urls, and keywords on separate lines.'
 	 );
   echo h_start('p');
   echo h('b', 'Required fields') . h('br');
@@ -457,7 +459,7 @@ function entry_errors(&$entry, $editid) {
   foreach ($fields['required'] as $f) {
     if (!is_array($f)) {
       if (!isset($entry[$f]))
-	$err[] = $f . ': required field is missing.';
+	$err[] = $f . ': required field missing.';
     } else {
       $found = false;
       foreach($f as $ff)
@@ -515,10 +517,9 @@ function deep_in_array($value, $array) {
 }
  
 /** insert($entry, $id) 
- * BUG: author names get reversed.
  */
 function insert($entry, $id) {
-  echo '<pre>Before '; print_r($entry); echo '</pre>';
+  //echo '<pre>Before '; print_r($entry); echo '</pre>';
   if (isset($id)) sql_delete_entry($id);
   else $id = sql_newid();
   foreach ($entry as $f => $v) {
@@ -527,19 +528,31 @@ function insert($entry, $id) {
     }
   }
   $e = sql_select_entry($id);
-  echo '<pre>After '; print_r($e); echo '</pre>';
-  //  show(array($id));
+  //echo '<pre>After '; print_r($e); echo '</pre>';
+  show(array($id));
 }
  
-/** import() */
+/** import() 
+ * TODO. implement import
+ */
 function import() {
   echo h('b', 'import not implemented yet.');
   print_r($_REQUEST);
 }
  
-/** help() */
+/** help() 
+ * TODO: implement help.
+ */
 function help() {
   echo h('b', 'help not implemented yet.');
+  print_r($_REQUEST);
+}
+ 
+/** login() 
+ * TODO: implement login.
+ */
+function login() {
+  echo h('b', 'login not implemented yet.');
   print_r($_REQUEST);
 }
  
@@ -874,7 +887,7 @@ function sql_error($q) {
   echo "<b>mysql error: $err</b><br/>
 In $q
 <ol><li> Please create a table in your mysql database using: <br/>
-<tt> CREATE TABLE $mysql[table] (entryid INT, field VARCHAR(255), value VARCHAR(65000), INDEX(entryid), INDEX(value)); </tt>
+<tt> CREATE TABLE $mysql[table] (entryid INT, field VARCHAR(255), value VARCHAR(65000), s SERIAL, INDEX(entryid), INDEX(value)); </tt>
 </li><li> Check the following mysql parameters and correct them if necessary in bibtex.php:
 <ul><li>host = $mysql[host]
 </li><li>user = $mysql[user]
@@ -904,7 +917,7 @@ function sql_term() {
 function sql_select_list($entryids) {
   global $mysql;
   if (!$entryids) return;
-  $query = sprintf("SELECT * FROM %s WHERE entryid IN (%s)",
+  $query = sprintf("SELECT * FROM %s WHERE entryid IN (%s) ORDER BY s",
 		   $mysql['table'], implode(', ', $entryids));
   return sql_entries($query);
 }
@@ -930,7 +943,7 @@ function sql_search($value) {
   if (!isset($value)) return;
   $table = $mysql['table'];
   $value = mysql_real_escape_string($value);
-  $query = "SELECT * FROM $table WHERE entryid IN (SELECT entryid FROM $table WHERE value LIKE '%$value%')";
+  $query = "SELECT * FROM $table WHERE entryid IN (SELECT entryid FROM $table WHERE value LIKE '%$value%') ORDER BY s";
   return sql_entries($query);
 }
 
@@ -941,7 +954,7 @@ function sql_select($field, $value) {
   $value = mysql_real_escape_string($value);
   $field = mysql_real_escape_string($field);
   $table = $mysql['table'];
-  $query = "SELECT * FROM $table WHERE entryid IN (SELECT entryid FROM $table WHERE value='$value' AND field='$field')";
+  $query = "SELECT * FROM $table WHERE entryid IN (SELECT entryid FROM $table WHERE value='$value' AND field='$field') ORDER BY s";
   return sql_entries($query);
 }
 
@@ -973,7 +986,7 @@ function sql_insert_field($id, $field, $value) {
   $id = mysql_real_escape_string($id);
   $field = mysql_real_escape_string($field);
   $value = mysql_real_escape_string($value);
-  sql_query("INSERT INTO $table VALUES ('$id', '$field', '$value')");
+  sql_query("INSERT INTO $table (entryid, field, value) VALUES ('$id', '$field', '$value')");
 }
 
 function sql_delete_field($id, $field, $value) {
