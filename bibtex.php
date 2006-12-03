@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.7 2006/12/03 02:31:12 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.8 2006/12/03 10:22:53 dyuret Exp dyuret $');
 
 /** Installation instructions.
  * To use this program you need to create a database table in mysql with:
@@ -18,15 +18,19 @@ $mysql = array
 /** main() generates top level page structure. 
  * $_fn gives the name of the page generation function.
  * Variables starting with '_' are REQUEST variables.
- * BUG: This is very insecure, we need to check what $_fn is.
  * TODO: separate read only actions from modifications.
  */
+$fnlist = array
+('search', 'select', 'show', 'bibtex', 'delete', 'addkey', 'delkey',
+ 'index', 'edit_value', 'new_entry', 'edit_entry', 'copy_entry', 
+ 'entry', 'import', 'help', 'login');
+
 function main() {
   // session_start();
   // error_reporting(E_ALL);
 
   import_request_variables('gp', '_');
-  global $_fn, $html_header, $html_footer;
+  global $_fn, $html_header, $html_footer, $fnlist;
   sql_init();
   if ($_fn == 'bibtex') {
     // for export, we need to output text, not html.
@@ -35,7 +39,7 @@ function main() {
   } else {
     echo $html_header;
     echo navbar();
-    if ($_fn) $_fn();
+    if (in_array($_fn, $fnlist)) $_fn();
     //print_r($_REQUEST);
     //phpinfo();
     echo $html_footer;
@@ -171,7 +175,7 @@ function select() {
   selection_form($select, "$_field = $_value ($nselect entries)");
 }
  
-/** show() shows the subset of entries which the user has selected.
+/** show($ids) shows the subset of entries which the user has selected.
  * Request: fn=show&nselect=9&keyword=&e1=3722&e3=3714&e5=3553
  * Uses get_selection to collect the selected entries.
  */
