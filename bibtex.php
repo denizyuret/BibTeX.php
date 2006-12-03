@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.5 2006/11/29 04:22:54 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.6 2006/12/02 17:51:01 dyuret Exp dyuret $');
 
 /** Installation instructions.
  * To use this program you need to create a database table in mysql with:
@@ -175,7 +175,7 @@ function select() {
  * Uses get_selection to collect the selected entries.
  */
 function show($ids) {
-  $ids = get_selection();
+  if (!isset($ids)) $ids = get_selection();
   if (!$ids) return;
   $select = sql_select_list($ids);
   $nselect = count($select);
@@ -298,10 +298,10 @@ function edit_value() {
  * $entry must be an array with a valid entrytype defined.
  * $id must be a valid entryid.
  */
-function entry_form($entry, $id, $title) {
+function entry_form($entry, $title, $id) {
   global $entry_types, $index_fields, $extra_fields, 
     $entry_field_index, $entry_field_printed;
-  if (!isset($entry) or !isset($id)) return;
+  if (!isset($entry)) return;
   $type = $entry['entrytype'];
   if (!$type) return;
   $fields = $entry_types[$type];
@@ -311,11 +311,12 @@ function entry_form($entry, $id, $title) {
 			     'method' => 'get'));
   echo h('p',
 	 ($title ? h('b', $title).' &nbsp; ' : '').
+	 h_hidden('fn', 'entry').
+	 ($id ? h_hidden('id', $id) : '').
 	 h_submit('Submit').
 	 h_button('Cancel', 'window.back()').
-	 h('br').'Please enter additional authors, keywords, etc. on separate lines.'.
-	 h_hidden('fn', 'insert').
-	 h_hidden('id', $id)
+	 h_submit('Don\'t check errors', 'nocheck').
+	 h('br').'Please enter additional authors, keywords, etc. on separate lines.'
 	 );
   echo h_start('p');
   echo h('b', 'Required fields') . h('br');
@@ -395,43 +396,150 @@ function entry_field_value($name, $value) {
   echo h_text($name, $value, array('size' => 40)).h('br');
 }
  
-/** new_entry($_type): Creates a new entry of a given type.
+/*** new_entry($_type): Creates a new entry of a given type.
  * $_type: gives the type of entry
  * if type == "Import BibTeX" then do import.
  */
 function new_entry() {
   global $_type;
   if ($_type == 'Import BibTeX') return import();
-  $id = sql_newid();
-  entry_form(array('entrytype' => $_type), $id, 'New entry');
+  entry_form(array('entrytype' => $_type), 'New entry');
 }
  
-/** edit_entry() Modifies an existing entry.
+/*** edit_entry() Modifies an existing entry.
  */
 function edit_entry() {
   global $_id;
-  $entries = sql_select_list(array($_id));
-  entry_form($entries[$_id], $_id, 'Edit entry');
+  $entry = sql_select_entry($_id);
+  entry_form($entry, 'Edit entry', $_id);
 }
  
-/** copy_entry() Clones an existing entry.
+/*** copy_entry() Clones an existing entry.
  */
 function copy_entry() {
   global $_id;
-  $entries = sql_select_list(array($_id));
-  $newid = sql_newid();
-  entry_form($entries[$_id], $newid, 'Copy entry');
+  $entry = sql_select_entry($_id);
+  entry_form($entry, 'Copy entry');
 }
  
-/** insert() */
-function insert() {
-  echo h('b', 'insert not implemented yet.');
-  print_r($_REQUEST);
+/** entry() */
+function entry() {
+  global $_id, $_nocheck;
+  $entry = get_fields();
+  if (!$entry) return;
+  if (!$_nocheck) $err = entry_errors($entry, $_id);
+  if ($err) {
+    echo h('p', h('b', 'Entry errors'));
+    echo h('ol', h('li', implode("\n</li><li>", $err)));
+    echo h('p', 'Please go back to fix the errors or 
+submit with the "Don\'t check errors" button.');
+    echo "<pre>Entry: ";
+    print_r($entry);
+    echo "</pre>\n";
+  } else {
+    insert($entry, $_id);
+  }
+}
+
+function entry_errors(&$entry, $editid) {
+  global $entry_types, $index_fields, 
+    $extra_fields, $extra_optional_fields;
+  $type = $entry['entrytype'];
+  if (!$type) $err[] = 'entrytype: not set.';
+  $fields = $entry_types[$type];
+  if (!$fields) $err[] = $type . ': not a valid entrytype.';
+  $citekey = $entry['citekey'];
+  $others = sql_select('citekey', $citekey);
+  foreach ($others as $id => $e) {
+    if ($id == $editid) continue;
+    $err[] = $citekey . ': not a unique citekey.';
+  }
+  foreach ($fields['required'] as $f) {
+    if (!is_array($f)) {
+      if (!isset($entry[$f]))
+	$err[] = $f . ': required field is missing.';
+    } else {
+      $found = false;
+      foreach($f as $ff)
+	if (isset($entry[$ff])) $found = true;
+      if (!$found)
+	$err[] = implode(' or ', $f) . ': required field missing.';
+    }
+  }
+  $allfields = array_merge($fields, $index_fields, $extra_fields, 
+			   $extra_optional_fields);
+  foreach ($entry as $f => $v) {
+    if (!deep_in_array($f, $allfields))
+      $err[] = $f . ': not a recognized field for the ' . 
+	$type . ' entrytype.';
+    foreach ((is_array($v) ? $v : array($v)) as $vv)
+      if (preg_match('/[^\000-\177]/', $vv))
+	$err[] = $vv . ': contains non-ascii characters.';
+  }
+  // anything else illegal in bibtex specs?
+  return $err;
+}
+
+function get_fields() {
+  global $_nfield;
+  if (!isset($_nfield)) return;
+  $fields = array();
+  for ($i = 1; $i <= $_nfield; $i++) {
+    $f = $_REQUEST["f$i"];
+    $v = $_REQUEST["v$i"];
+    if ($f != '' and $v != '') {
+      array_set_values($fields, $f, $v);
+    }
+  }
+  return $fields;
+}
+
+function array_set_values(&$fields, $f, $v) {
+  if (is_null($fields[$f])) {
+    $fields[$f] = $v;
+  } elseif (is_array($fields[$f])) {
+    $fields[$f][] = $v;
+  } else {
+    $fields[$f] = array($fields[$f], $v);
+  }
+}
+
+function deep_in_array($value, $array) {
+  foreach ($array as $item) {
+    if (($item == $value) ||
+	(is_array($item) &&
+	 deep_in_array($value, $item)))
+      return true;
+  }
+  return false;
+}
+ 
+/** insert($entry, $id) 
+ * BUG: author names get reversed.
+ */
+function insert($entry, $id) {
+  echo '<pre>Before '; print_r($entry); echo '</pre>';
+  if (isset($id)) sql_delete_entry($id);
+  else $id = sql_newid();
+  foreach ($entry as $f => $v) {
+    foreach ((is_array($v)?$v:array($v)) as $val) {
+      sql_insert_field($id, $f, $val);
+    }
+  }
+  $e = sql_select_entry($id);
+  echo '<pre>After '; print_r($e); echo '</pre>';
+  //  show(array($id));
 }
  
 /** import() */
 function import() {
   echo h('b', 'import not implemented yet.');
+  print_r($_REQUEST);
+}
+ 
+/** help() */
+function help() {
+  echo h('b', 'help not implemented yet.');
   print_r($_REQUEST);
 }
  
@@ -808,6 +916,15 @@ function sql_delete_list($entryids) {
 		    $mysql['table'], implode(', ', $entryids)));
 }
 
+function sql_select_entry($entryid) {
+  $entries = sql_select_list(array($entryid));
+  return $entries[$entryid];
+}
+
+function sql_delete_entry($entryid) {
+  sql_delete_list(array($entryid));
+}
+
 function sql_search($value) {
   global $mysql;
   if (!isset($value)) return;
@@ -830,18 +947,8 @@ function sql_select($field, $value) {
 
 function sql_entries($query) {
   $result = sql_query($query);
-  while ($row = mysql_fetch_row($result)) {
-    $i = $row[0];
-    $f = $row[1];
-    $v = $row[2];
-    if (is_null($e[$i][$f])) {
-      $e[$i][$f] = $v;
-    } elseif (is_array($e[$i][$f])) {
-      $e[$i][$f][] = $v;
-    } else {
-      $e[$i][$f] = array($e[$i][$f], $v);
-    }
-  }
+  while ($row = mysql_fetch_row($result))
+    array_set_values($e[$row[0]], $row[1], $row[2]);
   mysql_free_result($result);
   return $e;
 }
