@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.10 2006/12/04 19:45:38 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.11 2006/12/04 23:37:14 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -39,10 +39,10 @@ function main() {
   } else {
     echo $html_header;
     echo navbar();
-    if (in_array($_fn, $fn_output) or
-	(in_array($_fn, $fn_modify) and $logged_in))
-      $_fn();
-
+    if (in_array($_fn, $fn_output)) $_fn();
+    elseif (in_array($_fn, $fn_modify))
+      $logged_in ? $_fn() : print(h('p', 'Operation not allowed.'));
+    else print(h('p', 'Operation not recognized.'));
     //echo '<pre>'; print_r($_REQUEST); echo '</pre>';
     //echo '<pre>'; print_r($_SERVER); echo '</pre>';
     //phpinfo();
@@ -126,7 +126,7 @@ function selection_form($select, $title) {
   }
   echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
 			     'name' => 'selection_form',
-			     'method' => 'get'));
+			     'method' => 'post'));
   echo h_hidden('fn', 'show');
   echo h_hidden('nselect', $nselect);
 
