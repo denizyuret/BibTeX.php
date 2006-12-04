@@ -1,7 +1,7 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.8 2006/12/03 10:22:53 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.9 2006/12/03 20:52:05 dyuret Exp dyuret $');
 
-/** Installation instructions.
+/** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
  * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), s SERIAL, INDEX(entryid), INDEX(value));
  * And set the following parameters:
@@ -9,39 +9,44 @@ define('rcsid', '$Id: bibtex.php,v 1.8 2006/12/03 10:22:53 dyuret Exp dyuret $')
 $mysql = array
 (
  'host'  => 'localhost',
- 'user'  => 'bibadmin',
- 'pass'  => 'bibadmin',
  'db'    => 'test',
- 'table' => 'bibtex'
+ 'table' => 'bibtex',
+ 'user'  => '',
+ 'pass'  => '',
  );
  
 /** main() generates top level page structure. 
  * $_fn gives the name of the page generation function.
  * Variables starting with '_' are REQUEST variables.
- * TODO: separate read only actions from modifications.
  */
-$fnlist = array
-('search', 'select', 'show', 'bibtex', 'delete', 'addkey', 'delkey',
- 'index', 'edit_value', 'new_entry', 'edit_entry', 'copy_entry', 
- 'entry', 'import', 'help', 'login');
+$logged_in = false;
+$fn_output = array('search', 'select', 'show', 'index');
+$fn_header = array('bibtex', 'login', 'help');
+$fn_modify = array
+('delete', 'addkey', 'delkey', 'edit_value', 'new_entry', 'edit_entry', 
+ 'copy_entry', 'entry', 'import');
 
 function main() {
   // session_start();
   // error_reporting(E_ALL);
-
+  global $html_header, $html_footer, $logged_in,
+    $fn_output, $fn_header, $fn_modify;
   import_request_variables('gp', '_');
-  global $_fn, $html_header, $html_footer, $fnlist;
+  global $_fn;
   sql_init();
-  if ($_fn == 'bibtex') {
-    // for export, we need to output text, not html.
-    // so do this before we start generating html:
+  if (in_array($_fn, $fn_header)) {
     $_fn();
   } else {
     echo $html_header;
     echo navbar();
-    if (in_array($_fn, $fnlist)) $_fn();
-    //print_r($_REQUEST);
+    if (in_array($_fn, $fn_output) or
+	(in_array($_fn, $fn_modify) and $logged_in))
+      $_fn();
+
+    //echo '<pre>'; print_r($_REQUEST); echo '</pre>';
+    //echo '<pre>'; print_r($_SERVER); echo '</pre>';
     //phpinfo();
+
     echo $html_footer;
   }
   sql_term();
@@ -56,7 +61,9 @@ function navbar() {
 	h('td', navbar_search()).
 	h('td', navbar_index()).
 	h('td', navbar_new()).
-	h('td', navbar_sort())));
+	h('td', navbar_sort()).
+	h('td', navbar_login())
+	));
 }
 
 function navbar_search() {
@@ -76,7 +83,8 @@ function navbar_index() {
 }
 
 function navbar_new() {
-  global $entry_types;
+  global $entry_types, $logged_in;
+  if (!$logged_in) return;
   $uniq_types = array_keys($entry_types);
   sort($uniq_types);
   array_unshift($uniq_types, 'Import BibTeX');
@@ -98,6 +106,12 @@ function navbar_sort() {
 		  h_select('sort', $uniq_fields, 'Sort', 'submit()'));
 }
  
+function navbar_login() {
+  global $logged_in;
+  if (!$logged_in)
+    return h_button('Login', "window.location.replace('$_SERVER[PHP_SELF]?fn=login')");
+}
+
 /** selection_form($select, $title) generates the entry selection form.
  * select is an array[entryid][field]=value(s)
  * title is the title of the page
@@ -108,7 +122,7 @@ function selection_form($select, $title) {
     echo h('p', h('b', $title));
     return;
   }
-  echo h_start('form', array('action' => 'bibtex.php',
+  echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
 			     'name' => 'selection_form',
 			     'method' => 'get'));
   echo h_hidden('fn', 'show');
@@ -122,12 +136,14 @@ function selection_form($select, $title) {
   echo '&nbsp; Action: ';
   echo h_a('Show', 'javascript:show()')."\n";
   echo h_a('BibTeX', 'javascript:bibtex()')."\n";
-  echo h_a('Delete', 'javascript:confirmDelete()')."\n&nbsp;\n";
-  $uniq_keywords = sql_uniq('keywords');
-  sort($uniq_keywords);
-  echo h_select('keyword', $uniq_keywords, 'Keyword');
-  echo h_a('Addkey', "javascript:keyword('addkey')")."\n";
-  echo h_a('Delkey', "javascript:keyword('delkey')")."\n";
+  if ($logged_in) {
+    echo h_a('Delete', 'javascript:confirmDelete()')."\n&nbsp;\n";
+    $uniq_keywords = sql_uniq('keywords');
+    sort($uniq_keywords);
+    echo h_select('keyword', $uniq_keywords, 'Keyword');
+    echo h_a('Addkey', "javascript:keyword('addkey')")."\n";
+    echo h_a('Delkey', "javascript:keyword('delkey')")."\n";
+  }
   echo h_end('p');
 
   echo h_start('p');
@@ -221,8 +237,8 @@ function delete() {
   $ids = get_selection();
   if (!$ids) return;
   sql_delete_list($ids);
-  echo h_script('window.location.replace("' .
-		$_SERVER["HTTP_REFERER"] . '");');
+  echo h_script
+    ("window.location.replace('$_SERVER[HTTP_REFERER]')");
 }
  
 /** addkey($_keyword): adds the keyword to selected entries.
@@ -266,23 +282,23 @@ function delkey() {
  * or click on the box to modify a value.
  */
 function index() {
-  global $_field;
-  $plural = $_field;
-  if ($plural[strlen($plural)-1] != 's') $plural .= 's';
-  echo h('p', h('b', "Index of $plural &nbsp;").
-	 h('small', "(Click on a value to select, click on a box to edit)"));
-  echo h_start('form', array('action' => 'bibtex.php', 'name' => 'index_form'));
-  echo h_hidden('fn', 'edit_value');
-  echo h_hidden('field', $_field);
-  echo h_hidden('newval', '');
+  global $_field, $logged_in;
+  if ($logged_in) {
+    echo h('p', h('b', "$_field index &nbsp;").
+	   h('small', "(Click on a value to select, click on a box to edit)"));
+    echo h_start('form', array('action' => $_SERVER['PHP_SELF'], 'name' => 'index_form'));
+    echo h_hidden('fn', 'edit_value');
+    echo h_hidden('field', $_field);
+    echo h_hidden('newval', '');
+  } else echo h('p', h('b', "$_field index"));
   $uniq_vals = sql_uniq($_field);
   natcasesort($uniq_vals);
   foreach ($uniq_vals as $v) {
-    echo h_checkbox('value', $v, "edit_value('$v')");
+    if ($logged_in) echo h_checkbox('value', $v, "edit_value('$v')");
     print_field($_field, $v);
     echo h('br');
   }
-  h_end('form');
+  if ($logged_in) echo h_end('form');
 }
  
 /** edit_value($_field, $_value, $_newval): replace value with newval in field
@@ -312,7 +328,7 @@ function entry_form($entry, $title, $id) {
   if (!$type) return;
   $fields = $entry_types[$type];
   if (!$fields) return;
-  echo h_start('form', array('action' => 'bibtex.php',
+  echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
 			     'name' => 'entry_form',
 			     'method' => 'get'));
   echo h('p',
@@ -553,11 +569,19 @@ function help() {
 }
  
 /** login() 
- * TODO: implement login.
  */
 function login() {
-  echo h('b', 'login not implemented yet.');
-  print_r($_REQUEST);
+  global $logged_in;		// sql_init sets this.
+  if (!isset($_SERVER['PHP_AUTH_USER']) || 
+      !isset($_SERVER['PHP_AUTH_PW']) ||
+      !$logged_in) {
+    header( 'WWW-Authenticate: Basic realm="BibTeX"' );
+    header( 'HTTP/1.0 401 Unauthorized' );
+    echo h_script
+      ("window.location.replace('$_SERVER[PHP_SELF]')");
+  } else {
+    header("Location: $_SERVER[PHP_SELF]");
+  }
 }
  
 /** print_entry($entry, $id, $n) prints a single bibliography entry.
@@ -587,7 +611,7 @@ $entry_format = array
 );
 
 function print_entry(&$entry, $entryid, $n) {
-  global $entry_format;
+  global $entry_format, $logged_in;
   if (isset($entryid) and isset($n)) {
     html_input("e$n", $entryid, 'checkbox');
   }
@@ -605,7 +629,7 @@ function print_entry(&$entry, $entryid, $n) {
     else $print_fn($entry, $field, $value);
     echo $pattern[1];
   }
-  if (isset($n)) {
+  if ($logged_in and isset($n)) {
     echo h_get('edit',
 	       array('fn' => 'edit_entry',
 		     'id' => $entryid),
@@ -784,14 +808,14 @@ function h_form() {
     if ($i == 0 && is_array($arg)) $attr = $arg;
     else $input .= $arg;
   }
-  $attr['action'] = 'bibtex.php';
+  $attr['action'] = $_SERVER['PHP_SELF'];
   return h('form', $attr, $input);
 }
 
 function h_get($txt, $vars, $attr) {
-  $url = '?';
+  $url = "$_SERVER[PHP_SELF]?";
   foreach($vars as $name => $value) {
-    if ($url != '?') $url .= '&';
+    if ($url[strlen($url)-1] != '?') $url .= '&';
     $url .= urlencode($name) . '=' . urlencode($value);
   }
   return h_a($txt, $url, $attr);
@@ -823,7 +847,7 @@ function html_a($content, $url) {
 }
 
 function html_form() {  # input: name, value, type triples
-  html_print('<form action="bibtex.php">');
+  html_print("<form action='$_SERVER[PHP_SELF]'>");
   $n = func_num_args();
   for ($i = 0; $i < $n; $i += 3) {
     $name = func_get_arg($i);
@@ -875,7 +899,9 @@ function html() {  # name, content, attr, val, attr, val, ...
   echo "\n";
 }
  
-/** sql functions */
+/** sql functions 
+ * TODO: check each sql statement for sql injection
+ */
 
 $sql_link = NULL;
 
@@ -892,7 +918,7 @@ function sql_error($q) {
 In $q
 <ol><li> Please create a table in your mysql database using: <br/>
 <tt> CREATE TABLE $mysql[table] (entryid INT, field VARCHAR(255), value VARCHAR(65000), s SERIAL, INDEX(entryid), INDEX(value)); </tt>
-</li><li> Check the following mysql parameters and correct them if necessary in bibtex.php:
+</li><li> Check the following mysql parameters and correct them if necessary in $_SERVER[PHP_SELF]:
 <ul><li>host = $mysql[host]
 </li><li>user = $mysql[user]
 </li><li>pass = $mysql[pass]
@@ -904,9 +930,17 @@ In $q
 }
 
 function sql_init() {
-  global $mysql, $sql_link;
-  $sql_link = mysql_connect($mysql['host'], $mysql['user'], $mysql['pass'])
-    or sql_error('connect');
+  global $mysql, $sql_link, $logged_in;
+  if (isset($sql_link)) sql_term();
+  if (isset($_SERVER['PHP_AUTH_USER']) and
+      isset($_SERVER['PHP_AUTH_PW']) and
+      ($_SERVER['PHP_AUTH_USER'] != $mysql['user']))
+    $sql_link = mysql_connect($mysql['host'], 
+			      $_SERVER['PHP_AUTH_USER'],
+			      $_SERVER['PHP_AUTH_PW']);
+  if ($sql_link) $logged_in = true;
+  else $sql_link = mysql_connect($mysql['host'], $mysql['user'], $mysql['pass']);
+  if (!$sql_link) sql_error('connect');
   mysql_select_db($mysql['db']) 
     or sql_error('select_db');
   mysql_query("SELECT COUNT(*) FROM $mysql[table];") 
@@ -916,6 +950,7 @@ function sql_init() {
 function sql_term() {
   global $sql_link;
   mysql_close($sql_link);
+  unset($sql_link);
 }
 
 function sql_select_list($entryids) {
