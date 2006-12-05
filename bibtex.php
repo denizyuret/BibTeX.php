@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.11 2006/12/04 23:37:14 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.12 2006/12/04 23:52:39 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -287,16 +287,17 @@ function delkey($ids = NULL) {
  */
 function index() {
   global $_field, $logged_in;
+  $uniq_vals = sql_uniq($_field);
+  natcasesort($uniq_vals);
+  $nvals = count($uniq_vals);
   if ($logged_in) {
-    echo h('p', h('b', "$_field index &nbsp;").
+    echo h('p', h('b', "$_field index ($nvals values) &nbsp;").
 	   h('small', "(Click on a box to edit, click on a value to select)"));
     echo h_start('form', array('action' => $_SERVER['PHP_SELF'], 'name' => 'index_form'));
     echo h_hidden('fn', 'edit_value');
     echo h_hidden('field', $_field);
     echo h_hidden('newval', '');
-  } else echo h('p', h('b', "$_field index"));
-  $uniq_vals = sql_uniq($_field);
-  natcasesort($uniq_vals);
+  } else echo h('p', h('b', "$_field index ($nvals values)"));
   foreach ($uniq_vals as $v) {
     $vv = addslashes($v);
     if ($logged_in) echo h_radio('value', $v, "edit_value('$vv')");
@@ -694,13 +695,20 @@ function print_author_field(&$entry, $field, $value) {
 
 function print_title_field(&$entry, $field, $value) {
   $type = $entry['entrytype'];
-  if (in_array($type, array('book', 'inbook', 'manual', 'proceedings', 'phdthesis'))) {
-    $value = "<i>$value</i>";
-  }
+  if (in_array($type, array('book', 'inbook', 'manual', 'proceedings', 'phdthesis')))
+    $txt = "<i>$value</i>";
+  else $txt = $value;
   $url = isset($entry['url']) ? $entry['url'] : NULL;
   if (is_array($url)) $url = $url[0];
-  if (isset($url)) echo h_a("$value", $url);
-  else echo $value;
+  if (isset($url)) {
+    echo h_a($txt, $url);
+  } else {
+    $author = isset($entry['author']) ? $entry['author'] :
+      (isset($entry['editor']) ? $entry['editor'] : 'foo');
+    if (is_array($author)) $author = $author[0];
+    $url = 'http://www.google.com/search?q='.urlencode("\"$value\" $author");
+    echo h_a($txt, $url, array('class' => 'google'));
+  }
 }
 
 function print_url_field(&$entry, $field, $value) {
@@ -1198,6 +1206,7 @@ function edit_value(v) {
 <style type="text/css">
 <!--
 A.local { text-decoration:none; color:black }
+A.google { text-decoration:none; color:black }
 A.url { font-variant:small-caps }
 A.edit { font-variant:small-caps; color:black }
 P.rcsid { font-size:xx-small }
