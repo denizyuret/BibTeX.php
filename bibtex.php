@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.14 2006/12/06 00:45:29 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.15 2006/12/06 15:16:35 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -272,6 +272,7 @@ function delete($ids = NULL) {
 /** addkey($ids, $_keyword) adds the keyword to selected entries.
  * Request: fn=addkey&nselect=3&keyword=AI&e1=419&e2=561&e3=903
  * TODO: do google style single list for add/del keyword.
+ * TODO: add a new keyword without having to edit an entry first.
  */
 function addkey($ids = NULL) {
   global $_keyword;
@@ -284,8 +285,8 @@ function addkey($ids = NULL) {
   show($ids);
 }
  
-function has_keyword($entry, $keyword) {
-  $keys = $entry['keywords'];
+function has_keyword(&$entry, $keyword) {
+  $keys = isset($entry['keywords']) ? $entry['keywords'] : NULL;
   if (is_array($keys)) return in_array($keyword, $keys);
   else return ($keyword == $keys);
 }
@@ -350,7 +351,7 @@ function edit_value() {
 /** entry_form($entry, $title, $id) form to create, copy or edit an entry.
  * $entry must be an array with a valid entrytype defined.
  */
-function entry_form($entry, $title = NULL, $id = NULL) {
+function entry_form(&$entry, $title = NULL, $id = NULL) {
   global $entry_types, $extra_index_fields, $extra_urlkey_fields, $extra_textarea_fields,
     $entry_field_index, $entry_field_printed;
   if (!isset($entry)) return;
@@ -360,7 +361,7 @@ function entry_form($entry, $title = NULL, $id = NULL) {
   if (!$fields) return;
   echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
 			     'name' => 'entry_form',
-			     'method' => 'get'));
+			     'method' => 'post'));
   echo h('p',
 	 ($title ? h('strong', $title).' &nbsp; ' : '').
 	 h_hidden('fn', 'entry').
@@ -445,7 +446,7 @@ function print_entry_field($field, $value) {
   if (isset($field)) {
     if (is_array($field)) {
       foreach ($field as $f)
-	$entry_field_printed[$field] = 1;
+	$entry_field_printed[$f] = 1;
       echo h_help('?', $field[0]);
     } else {
       $entry_field_printed[$field] = 1;
@@ -464,7 +465,8 @@ function print_entry_field($field, $value) {
 function new_entry() {
   global $_type;
   if ($_type == 'Import BibTeX') return import();
-  entry_form(array('entrytype' => $_type), 'New entry');
+  $entry = array('entrytype' => $_type);
+  entry_form($entry, 'New entry');
 }
  
 /** edit_entry() modifies an existing entry.
@@ -591,7 +593,7 @@ function deep_in_array($value, $array) {
 /** insert($entry, $id) inserts or replaces an entry
  * TODO: do a diff instead of deleting the original entry when editing.
  */
-function insert($entry, $id = NULL) {
+function insert(&$entry, $id = NULL) {
   //echo '<pre>Before '; print_r($entry); echo '</pre>';
   if (isset($id)) sql_delete_entry($id);
   else $id = sql_newid();
@@ -1011,7 +1013,7 @@ In $q
   die();
 }
 
-function sql_select_list($entryids) {
+function sql_select_list(&$entryids) {
   global $mysql;
   if (!$entryids) return;
   $query = sprintf("SELECT * FROM %s WHERE entryid IN (%s) ORDER BY s",
@@ -1019,7 +1021,7 @@ function sql_select_list($entryids) {
   return sql_entries($query);
 }
 
-function sql_delete_list($entryids) {
+function sql_delete_list(&$entryids) {
   global $mysql;
   if (!$entryids) return;
   sql_query(sprintf("DELETE FROM %s WHERE entryid IN (%s)",
@@ -1027,12 +1029,14 @@ function sql_delete_list($entryids) {
 }
 
 function sql_select_entry($entryid) {
-  $entries = sql_select_list(array($entryid));
+  $ids = array($entryid);
+  $entries = sql_select_list($ids);
   return $entries[$entryid];
 }
 
 function sql_delete_entry($entryid) {
-  sql_delete_list(array($entryid));
+  $ids = array($entryid);
+  sql_delete_list($ids);
 }
 
 function sql_search($value) {
@@ -1057,6 +1061,7 @@ function sql_select($field, $value) {
 
 function sql_entries($query) {
   $result = sql_query($query);
+  $e = array();
   while ($row = mysql_fetch_row($result))
     array_set_values($e[$row[0]], $row[1], $row[2]);
   mysql_free_result($result);
