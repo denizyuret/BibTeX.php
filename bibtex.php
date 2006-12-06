@@ -1,58 +1,63 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.13 2006/12/05 00:25:08 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.14 2006/12/06 00:45:29 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
- * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), s SERIAL, INDEX(entryid), INDEX(value));
- * And set the following parameters:
+ * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), user VARCHAR(255), s SERIAL, INDEX(entryid), INDEX(value));
+ *
+ * Authentication and privileges are managed by mysql.  bibtex.php
+ * just sends the login information to mysql.  Here is the scheme
+ * I use for privileges:
+ *
+ * GRANT ALL PRIVILEGES ON bibtex.bibtex TO root@localhost;
+ * GRANT SELECT, INSERT ON bibtex.bibtex TO user@localhost;
+ * GRANT SELECT ON bibtex.bibtex TO ''@localhost;
+ *
+ * That way only root can alter or delete entries, 
+ * regular users can select and insert
+ * anonymous user can only select.
+ *
+ * The following array should have the login information for the anonymous user:
  */
 $mysql = array
 (
- 'host'  => 'localhost',
  'db'    => 'bibtex',
  'table' => 'bibtex',
  'user'  => '',
+ 'host'  => 'localhost',
  'pass'  => '',
  );
  
 /** main($_fn) generates top level page structure. 
  * $_fn gives the name of the page generation function.
  * Variables starting with '_' are REQUEST variables.
+ * TODO: implement backups
  */
-$logged_in = false;
-$fn_header = array('bibtex', 'login', 'help', 'source');
-$fn_output = array('search', 'select', 'show', 'index');
-$fn_modify = array
-('delete', 'addkey', 'delkey', 'edit_value', 'new_entry', 'edit_entry', 
- 'copy_entry', 'entry', 'import');
+$fn_header = array('bibtex', 'login', 'help', 'download');
+$fn_select = array('search', 'select', 'show', 'index');
+$fn_insert = array('addkey', 'new_entry', 'copy_entry', 'entry', 'import');
+$fn_delete = array('delete', 'delkey', 'edit_value', 'edit_entry');
+$fn_all = array_merge($fn_header, $fn_select, $fn_insert, $fn_delete);
 
 function main() {
   // session_start();
   // error_reporting(E_ALL);
-  global $html_header, $html_footer, $logged_in,
-    $fn_output, $fn_header, $fn_modify;
+  global $html_header, $html_footer, $fn_header, $fn_all;
   import_request_variables('gp', '_');
   global $_fn;
   sql_init();
-  if (in_array($_fn, $fn_header)) {
-    $_fn();
-  } else {
+  if (isset($_fn) and in_array($_fn, $fn_header)) $_fn();
+  else {
     echo $html_header;
     echo navbar();
-    if (isset($_fn)) {
-      if (in_array($_fn, $fn_output)) $_fn();
-      elseif (in_array($_fn, $fn_modify))
-	$logged_in ? $_fn() : print(h('p', 'Operation not allowed.'));
-      else print(h('p', 'Operation not recognized.'));
-    }
-
-    //echo '<pre>'; print_r($_REQUEST); echo '</pre>';
-    //echo '<pre>'; print_r($_SERVER); echo '</pre>';
-    //phpinfo();
-
+    if (isset($_fn) and in_array($_fn, $fn_all)) $_fn();
     echo $html_footer;
   }
   sql_term();
+    
+  //echo '<pre>'; print_r($_REQUEST); echo '</pre>';
+  //echo '<pre>'; print_r($_SERVER); echo '</pre>';
+  //phpinfo();
 }
  
 /** navbar() generates the menu at the top. 
@@ -70,6 +75,9 @@ function navbar() {
 	));
 }
 
+/* navbar_search()
+ * TODO: implement advanced search.
+ */
 function navbar_search() {
   $attr['onclick'] = 'if(value == "Search"){value = ""}';
   return h_form(h_hidden('fn', 'search'),
@@ -77,6 +85,9 @@ function navbar_search() {
 		
 }
 
+/* navbar_index()
+ * TODO: restrict the fields that can be indexed?
+ */
 function navbar_index() {
   global $uniq_fields;
   if (!isset($uniq_fields)) $uniq_fields = sql_uniq(NULL);
@@ -87,8 +98,8 @@ function navbar_index() {
 }
 
 function navbar_new() {
-  global $entry_types, $logged_in;
-  if (!$logged_in) return;
+  global $entry_types, $sql_priv;
+  if (!isset($sql_priv['INSERT'])) return;
   $uniq_types = array_keys($entry_types);
   sort($uniq_types);
   array_unshift($uniq_types, 'Import BibTeX');
@@ -111,12 +122,14 @@ function navbar_sort() {
 }
  
 function navbar_login() {
-  global $logged_in;
-  return $logged_in ?
-    $_SERVER['PHP_AUTH_USER'] :
+  global $sql_user;
+  $php_user = isset($_SERVER['PHP_AUTH_USER']) ? 
+    $_SERVER['PHP_AUTH_USER'] : NULL;
+  return ($php_user && ($php_user == $sql_user)) ?
+    h_get($php_user, array('fn' => 'login', 'user' => $php_user)) :
     h_get('Login', array('fn' => 'login'));
 }
- 
+
 function navbar_help() {
   return h_help('Help');
 }
@@ -126,7 +139,7 @@ function navbar_help() {
  * title is the title of the page
  */
 function selection_form($select, $title) {
-  global $logged_in;
+  global $sql_priv;
   $nselect = count($select);
   if ($nselect == 0) {
     echo h('p', h('strong', $title));
@@ -146,13 +159,16 @@ function selection_form($select, $title) {
   echo '&nbsp; Action: ';
   echo h_a('Show', 'javascript:show()')."\n";
   echo h_a('BibTeX', 'javascript:bibtex()')."\n";
-  if ($logged_in) {
+  if (isset($sql_priv['DELETE']))
     echo h_a('Delete', 'javascript:confirmDelete()')."\n&nbsp;\n";
+  if (isset($sql_priv['INSERT']) or isset($sql_priv['DELETE'])) {
     $uniq_keywords = sql_uniq('keywords');
     sort($uniq_keywords);
     echo h_select('keyword', $uniq_keywords, 'Keyword');
-    echo h_a('Addkey', 'javascript:keyword("addkey")')."\n";
-    echo h_a('Delkey', 'javascript:keyword("delkey")')."\n";
+    if (isset($sql_priv['INSERT']))
+      echo h_a('Addkey', 'javascript:keyword("addkey")')."\n";
+    if (isset($sql_priv['DELETE']))
+      echo h_a('Delkey', 'javascript:keyword("delkey")')."\n";
   }
   echo h_end('p');
 
@@ -234,7 +250,7 @@ function bibtex($ids = NULL) {
   if (!$ids) $ids = get_selection();
   if (!$ids) return;
   header('Content-type: text/plain');
-  echo "BibTeX not implemented yet.\n\n";
+  echo "BibTeX not implemented yet, here are the entries you selected:\n\n";
   //print_r($_REQUEST);
   $entries = sql_select_list($ids);
   foreach ($entries as $entry) {
@@ -294,11 +310,12 @@ function delkey($ids = NULL) {
  * or click on the box to modify a value.
  */
 function index() {
-  global $_field, $logged_in;
+  global $_field, $sql_priv;
+  $can_edit = isset($sql_priv['DELETE']);
   $uniq_vals = sql_uniq($_field);
   natcasesort($uniq_vals);
   $nvals = count($uniq_vals);
-  if ($logged_in) {
+  if ($can_edit) {
     echo h('p', h('strong', "$_field index ($nvals values) &nbsp;").
 	   h('small', "(Click on a box to edit, click on a value to select)"));
     echo h_start('form', array('action' => $_SERVER['PHP_SELF'], 'name' => 'index_form'));
@@ -308,11 +325,11 @@ function index() {
   } else echo h('p', h('strong', "$_field index ($nvals values)"));
   foreach ($uniq_vals as $v) {
     $vv = addslashes($v);
-    if ($logged_in) echo h_radio('value', $v, "edit_value('$vv')");
+    if ($can_edit) echo h_radio('value', $v, "edit_value('$vv')");
     print_field($_field, $v);
     echo h('br');
   }
-  if ($logged_in) echo h_end('form');
+  if ($can_edit) echo h_end('form');
 }
  
 /** edit_value($_field, $_value, $_newval) replace value with newval in field
@@ -334,7 +351,7 @@ function edit_value() {
  * $entry must be an array with a valid entrytype defined.
  */
 function entry_form($entry, $title = NULL, $id = NULL) {
-  global $entry_types, $index_fields, $extra_fields, 
+  global $entry_types, $extra_index_fields, $extra_urlkey_fields, $extra_textarea_fields,
     $entry_field_index, $entry_field_printed;
   if (!isset($entry)) return;
   $type = $entry['entrytype'];
@@ -355,14 +372,14 @@ function entry_form($entry, $title = NULL, $id = NULL) {
 	 );
   echo h_start('p');
   echo h('strong', 'Required fields ').h_help('?', 'required').h('br');
-  foreach ($index_fields as $f)
+  foreach ($extra_index_fields as $f)
     entry_field($entry, $f);
   foreach ($fields['required'] as $f)
     entry_field($entry, $f);
   for ($i = 1; $i <= 3; $i++)
     entry_field($entry, NULL);
   echo h('strong', 'Optional fields ').h_help('?', 'optional').h('br');
-  foreach ($extra_fields as $f)
+  foreach ($extra_urlkey_fields as $f)
     entry_field($entry, $f);
   foreach ($fields['optional'] as $f)
     entry_field($entry, $f);
@@ -371,6 +388,8 @@ function entry_form($entry, $title = NULL, $id = NULL) {
       entry_field($entry, $f);
   for ($i = 1; $i <= 3; $i++)
     entry_field($entry, NULL);
+  foreach ($extra_textarea_fields as $f)
+    entry_field($entry, $f);
   echo h_hidden('nfield', $entry_field_index);
   h_end('p');
   h_end('form');
@@ -386,6 +405,7 @@ $entry_field_index = 0;
 $entry_field_printed = array();
 $field_input_size = 10;
 $value_input_size = 40;
+$textarea_rows = 3;
 
 function entry_field(&$entry, $field) {
   global $entry_field_index;
@@ -408,16 +428,20 @@ function entry_field(&$entry, $field) {
 }
 
 function print_entry_field($field, $value) {
-  global $field_input_size, $value_input_size, $entry_field_index, $entry_field_printed;
+  global $field_input_size, $value_input_size, $textarea_rows,
+    $entry_field_index, $entry_field_printed, $extra_textarea_fields;
   $n = ++$entry_field_index;
   $field_name = "f$n";
   $value_name = "v$n";
-  if (!isset($field)) echo h_text($field_name, '', array('size' => $field_input_size));
-  elseif (is_array($field)) echo h_select($field_name, $field);
+
+  if (is_array($field)) echo h_select($field_name, $field);
   else echo h_text($field_name, $field, array('size' => $field_input_size));
-  if (!isset($value)) echo h_text($value_name, '', array('size' => $value_input_size));
-  elseif (is_array($value)) echo h_select($value_name, $value);
+
+  if (is_array($value)) echo h_select($value_name, $value);
+  elseif (in_array($field, $extra_textarea_fields)) 
+    echo h_textarea($value_name, $value, $textarea_rows, $value_input_size);
   else echo h_text($value_name, $value, array('size' => $value_input_size));
+
   if (isset($field)) {
     if (is_array($field)) {
       foreach ($field as $f)
@@ -452,6 +476,7 @@ function edit_entry() {
 }
  
 /** copy_entry() clones an existing entry.
+ * TODO: create a new citekey.
  */
 function copy_entry() {
   global $_id;
@@ -479,9 +504,11 @@ submit with the "Don\'t check errors" button.');
   }
 }
 
+/* entry_errors
+ * TODO: give more info if duplicate citekey.
+ */
 function entry_errors(&$entry, $editid) {
-  global $entry_types, $index_fields, 
-    $extra_fields, $extra_optional_fields;
+  global $entry_types, $extra_fields;
   $err = array();
   $type = isset($entry['entrytype']) ? $entry['entrytype'] : NULL;
   if (!$type) $err[] = 'entrytype: not set. '.h_help('?', 'entrytype');
@@ -512,12 +539,11 @@ function entry_errors(&$entry, $editid) {
       }
     }
   }
-  $allfields = array_merge($fields, $index_fields, $extra_fields, 
-			   $extra_optional_fields);
+  $allfields = array_merge($fields, $extra_fields);
   foreach ($entry as $f => $v) {
     if (!deep_in_array($f, $allfields))
       $err[] = $f . ': not a recognized field for the ' . 
-	$type . ' entrytype. ' . h_help('?', $type);
+	$type . ' entrytype. ' . h_help('?', 'ignored');
     foreach ((is_array($v) ? $v : array($v)) as $vv)
       if (preg_match('/[^\000-\177]/', $vv))
 	$err[] = $vv . ': contains non-ascii characters. '.
@@ -563,6 +589,7 @@ function deep_in_array($value, $array) {
 }
  
 /** insert($entry, $id) inserts or replaces an entry
+ * TODO: do a diff instead of deleting the original entry when editing.
  */
 function insert($entry, $id = NULL) {
   //echo '<pre>Before '; print_r($entry); echo '</pre>';
@@ -598,9 +625,9 @@ function help() {
   echo $html_footer;
 }
  
-/** source() TODO prints out the source code.
+/** download() TODO prints out the source code.
  */
-function source() {
+function download() {
   header('Content-type: text/plain');
   $filename = $_SERVER['SCRIPT_FILENAME'];
   $handle = fopen($filename, 'r');
@@ -611,18 +638,21 @@ function source() {
 /** login() presents the user with a login prompt
  */
 function login() {
-  global $logged_in;		// sql_init sets this.
+  global $_user, $sql_user;		// sql_init sets this.
+  $php_user = isset($_SERVER['PHP_AUTH_USER']) ?
+    $_SERVER['PHP_AUTH_USER'] : NULL;
   $target = isset($_SERVER['HTTP_REFERER']) ?
     $_SERVER['HTTP_REFERER'] :
     $_SERVER['PHP_SELF'];
-  if (!isset($_SERVER['PHP_AUTH_USER']) || 
-      !isset($_SERVER['PHP_AUTH_PW']) ||
-      !$logged_in) {
+  if (!isset($php_user)
+      || ($sql_user != $php_user)
+      || (isset($_user) && ($_user == $php_user))) {
     header( 'WWW-Authenticate: Basic realm="BibTeX"' );
     header( 'HTTP/1.0 401 Unauthorized' );
-    echo h_script
-      ("window.location.replace('$target')");
+    //echo "Failed: sql_user=$sql_user, PHP_AUTH_USER=$_SERVER[PHP_AUTH_USER]\n";
+    echo h_script("window.location.replace('$target')");
   } else {
+    //echo "Success: sql_user=$sql_user, PHP_AUTH_USER=$_SERVER[PHP_AUTH_USER]\n";
     header("Location: $target");
   }
 }
@@ -654,7 +684,7 @@ $entry_format = array
 );
 
 function print_entry(&$entry, $entryid = NULL, $n = NULL) {
-  global $entry_format, $logged_in;
+  global $entry_format, $sql_priv;
   if (isset($entryid) and isset($n)) {
     echo h_checkbox("e$n", $entryid);
   }
@@ -672,16 +702,17 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
     else $print_fn($entry, $field, $value);
     echo $pattern[1];
   }
-  if ($logged_in and isset($n)) {
-    echo h_get('edit',
-	       array('fn' => 'edit_entry',
-		     'id' => $entryid),
-	       array('class' => 'edit'));
-    echo ' ';
-    echo h_get('copy',
-	       array('fn' => 'copy_entry',
-		     'id' => $entryid),
-	       array('class' => 'edit'));
+  if (isset($n)) {
+    if (isset($sql_priv['DELETE']))
+      echo h_get('edit',
+		 array('fn' => 'edit_entry',
+		       'id' => $entryid),
+		 array('class' => 'edit')).' ';
+    if (isset($sql_priv['INSERT']))
+      echo h_get('copy',
+		 array('fn' => 'copy_entry',
+		       'id' => $entryid),
+		 array('class' => 'edit'));
   }
   echo h('br');
 }
@@ -807,11 +838,19 @@ function h_hidden($name, $value) {
   return h('input', $attr);
 }
 
-function h_text($name, $value, $attr=NULL) {
+function h_text($name, $value=NULL, $attr=NULL) {
   $attr['type'] = 'text';
   $attr['name'] = $name;
-  $attr['value'] = $value;
+  if (isset($value)) $attr['value'] = $value;
   return h('input', $attr);
+}
+
+function h_textarea($name, $value=NULL, $rows=NULL, $cols=NULL) {
+  $attr['name'] = $name;
+  if (isset($rows)) $attr['rows'] = $rows;
+  if (isset($cols)) $attr['cols'] = $cols;
+  if (isset($value)) return h('textarea', $attr, $value);
+  else return h_start('textarea', $attr).h_end('textarea');
 }
 
 function h_submit($value=NULL, $name=NULL, $onclick=NULL) {
@@ -897,6 +936,56 @@ function h_help($txt, $section = NULL) {
  */
 
 $sql_link = NULL;
+$sql_user = NULL;
+$sql_priv = NULL;
+
+function sql_init() {
+  global $mysql, $sql_link, $sql_user, $sql_priv;
+  if (isset($sql_link)) sql_term();
+  if (isset($_SERVER['PHP_AUTH_USER']) and
+      isset($_SERVER['PHP_AUTH_PW']) and
+      ($_SERVER['PHP_AUTH_USER'] != $mysql['user']))
+    $sql_link = mysql_connect($mysql['host'], 
+			      $_SERVER['PHP_AUTH_USER'],
+			      $_SERVER['PHP_AUTH_PW']);
+  if ($sql_link) $sql_user = $_SERVER['PHP_AUTH_USER'];
+  else {
+    $sql_link = mysql_connect($mysql['host'], $mysql['user'], $mysql['pass']);
+    if ($sql_link) $sql_user = $mysql['user'];
+    else sql_error('connect');
+  }
+  mysql_select_db($mysql['db']) 
+    or sql_error('select_db');
+  $sql_priv = sql_priv();
+  if (!isset($sql_priv['SELECT']))
+    sql_error('select');
+}
+
+function sql_term() {
+  global $sql_link, $sql_user, $sql_priv;
+  mysql_close($sql_link);
+  unset($sql_link, $sql_user, $sql_priv);
+}
+
+/* issue ineffective statements to test for privileges */
+function sql_priv() {
+  global $mysql;
+  $priv = array();
+  $table = $mysql['table'];
+  $q = "SELECT * FROM $table WHERE entryid = '-1'";
+  $r = mysql_query($q);
+  if ($r) $priv['SELECT'] = true;
+  $q = "INSERT INTO $table SELECT * FROM $table WHERE entryid = '-1'";
+  $r = mysql_query($q);
+  if ($r) $priv['INSERT'] = true;
+  $q = "UPDATE $table SET entryid = '0' WHERE entryid = '-1'";
+  $r = mysql_query($q);
+  if ($r) $priv['UPDATE'] = true;
+  $q = "DELETE FROM $table WHERE entryid = '-1'";
+  $r = mysql_query($q);
+  if ($r) $priv['DELETE'] = true;
+  return $priv;
+}
 
 function sql_query($q) {
   $result = mysql_query($q);
@@ -910,7 +999,7 @@ function sql_error($q) {
   echo "<b>mysql error: $err</b><br/>
 In $q
 <ol><li> Please create a table in your mysql database using: <br/>
-<tt> CREATE TABLE $mysql[table] (entryid INT, field VARCHAR(255), value VARCHAR(65000), s SERIAL, INDEX(entryid), INDEX(value)); </tt>
+<tt> CREATE TABLE $mysql[table] (entryid INT, field VARCHAR(255), value VARCHAR(65000), user VARCHAR(255), s SERIAL, INDEX(entryid), INDEX(value)); </tt>
 </li><li> Check the following mysql parameters and correct them if necessary in $_SERVER[PHP_SELF]:
 <ul><li>host = $mysql[host]
 </li><li>user = $mysql[user]
@@ -920,30 +1009,6 @@ In $q
 </li></ul></li></ol>
 ";
   die();
-}
-
-function sql_init() {
-  global $mysql, $sql_link, $logged_in;
-  if (isset($sql_link)) sql_term();
-  if (isset($_SERVER['PHP_AUTH_USER']) and
-      isset($_SERVER['PHP_AUTH_PW']) and
-      ($_SERVER['PHP_AUTH_USER'] != $mysql['user']))
-    $sql_link = mysql_connect($mysql['host'], 
-			      $_SERVER['PHP_AUTH_USER'],
-			      $_SERVER['PHP_AUTH_PW']);
-  if ($sql_link) $logged_in = true;
-  else $sql_link = mysql_connect($mysql['host'], $mysql['user'], $mysql['pass']);
-  if (!$sql_link) sql_error('connect');
-  mysql_select_db($mysql['db']) 
-    or sql_error('select_db');
-  mysql_query("SELECT COUNT(*) FROM $mysql[table];") 
-    or sql_error('select');
-}
-
-function sql_term() {
-  global $sql_link;
-  mysql_close($sql_link);
-  unset($sql_link);
 }
 
 function sql_select_list($entryids) {
@@ -1018,7 +1083,7 @@ function sql_insert_field($id, $field, $value) {
   $id = mysql_real_escape_string($id);
   $field = mysql_real_escape_string($field);
   $value = mysql_real_escape_string($value);
-  sql_query("INSERT INTO $table (entryid, field, value) VALUES ('$id', '$field', '$value')");
+  sql_query("INSERT INTO $table (entryid, field, value, user) VALUES ('$id', '$field', '$value', CURRENT_USER)");
 }
 
 function sql_delete_field($id, $field, $value) {
@@ -1065,9 +1130,11 @@ function sql_newid() {
  * keywords, not specified in bibtex standard.  Finally the program
  * will accept any new field typed by the user.
  */
-$index_fields = array('entrytype', 'citekey');
-$extra_fields = array('url', 'keywords');
+$extra_index_fields = array('entrytype', 'citekey');
 $extra_optional_fields = array('key', 'crossref', 'annote');
+$extra_textarea_fields = array('abstract', 'annote');
+$extra_urlkey_fields = array('url', 'keywords');
+$extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 
 $entry_types = array
 (
@@ -1231,11 +1298,13 @@ function edit_value(v) {
 </script>
 <style type="text/css">
 <!--
-A.local { text-decoration:none; color:black }
-A.google { text-decoration:none; color:black }
-A.url { font-variant:small-caps }
-A.edit { font-variant:small-caps; color:black }
-P.rcsid { font-size:xx-small }
+a.local { text-decoration:none; color:black }
+a.google { text-decoration:none; color:black }
+a.url { font-variant:small-caps }
+a.edit { font-variant:small-caps; color:black }
+p.rcsid { font-size:xx-small }
+input { vertical-align:top }
+a { vertical-align:top }
 -->
 </style>
 </head>
@@ -1345,8 +1414,8 @@ entry-type name is preceded by an <tt>@</tt> character.  </p>
 
 <dd>An article from a journal or magazine.  
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#journal">journal</a>, 
 <a href="#year">year</a>.
 Optional fields: 
@@ -1361,9 +1430,9 @@ Optional fields:
 
 <dd>A book with an explicit publisher.  
 Required fields: 
-<a href="#author_field">author</a> or 
-<a href="#editor_field">editor</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a> or 
+<a href="#editor">editor</a>, 
+<a href="#title">title</a>, 
 <a href="#publisher">publisher</a>, 
 <a href="#year">year</a>.
 Optional fields: 
@@ -1381,9 +1450,9 @@ Optional fields:
 <dd>A work that is printed and bound, but without a named publisher or
 sponsoring institution.  
 Required field: 
-<a href="#title_field">title</a>.
+<a href="#title">title</a>.
 Optional fields: 
-<a href="#author_field">author</a>, 
+<a href="#author">author</a>, 
 <a href="#howpublished">howpublished</a>, 
 <a href="#address">address</a>, 
 <a href="#month">month</a>, 
@@ -1401,9 +1470,9 @@ for <em>Scribe</em> compatibility. </dd>
 <dd>A part of a book, which may be a chapter (or section or whatever)
 and/or a range of pages.  
 Required fields: 
-<a href="#author_field">author</a> or 
-<a href="#editor_field">editor</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a> or 
+<a href="#editor">editor</a>, 
+<a href="#title">title</a>, 
 <a href="#chapter">chapter</a> and/or 
 <a href="#pages">pages</a>, 
 <a href="#publisher">publisher</a>, 
@@ -1423,13 +1492,13 @@ Optional fields:
 
 <dd>A part of a book having its own title.  
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#booktitle">booktitle</a>, 
 <a href="#publisher">publisher</a>,
 <a href="#year">year</a>.  
 Optional fields: 
-<a href="#editor_field">editor</a>, 
+<a href="#editor">editor</a>, 
 <a href="#volume">volume</a> or 
 <a href="#number">number</a>, 
 <a href="#series">series</a>, 
@@ -1446,12 +1515,12 @@ Optional fields:
 
 <dd>An article in a conference proceedings.  
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#booktitle">booktitle</a>, 
 <a href="#year">year</a>.  
 Optional fields: 
-<a href="#editor_field">editor</a>, 
+<a href="#editor">editor</a>, 
 <a href="#volume">volume</a> or 
 <a href="#number">number</a>, 
 <a href="#series">series</a>, 
@@ -1467,9 +1536,9 @@ Optional fields:
 
 <dd>Technical documentation.  
 Required field: 
-<a href="#title_field">title</a>.  
+<a href="#title">title</a>.  
 Optional fields: 
-<a href="#author_field">author</a>, 
+<a href="#author">author</a>, 
 <a href="#organization">organization</a>, 
 <a href="#address">address</a>, 
 <a href="#edition">edition</a>, 
@@ -1482,8 +1551,8 @@ Optional fields:
 
 <dd>A Master\'s thesis.  
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#school">school</a>, 
 <a href="#year">year</a>.  
 Optional fields: 
@@ -1499,8 +1568,8 @@ Optional fields:
 Required fields: 
 none.
 Optional fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#howpublished">howpublished</a>, 
 <a href="#month">month</a>, 
 <a href="#year">year</a>, 
@@ -1511,8 +1580,8 @@ Optional fields:
 
 <dd>A PhD thesis.  
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#school">school</a>, 
 <a href="#year">year</a>.  
 Optional fields: 
@@ -1526,10 +1595,10 @@ Optional fields:
 
 <dd>The proceedings of a conference.  
 Required fields: 
-<a href="#title_field">title</a>, 
+<a href="#title">title</a>, 
 <a href="#year">year</a>.  
 Optional fields:
-<a href="#editor_field">editor</a>, 
+<a href="#editor">editor</a>, 
 <a href="#volume">volume</a> or 
 <a href="#number">number</a>, 
 <a href="#series">series</a>, 
@@ -1545,8 +1614,8 @@ Optional fields:
 <dd>A report published by a school or other institution, usually
 numbered within a series.  
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#institution">institution</a>, 
 <a href="#year">year</a>.  
 Optional fields: 
@@ -1561,8 +1630,8 @@ Optional fields:
 
 <dd>A document having an author and title, but not formally published.
 Required fields: 
-<a href="#author_field">author</a>, 
-<a href="#title_field">title</a>, 
+<a href="#author">author</a>, 
+<a href="#title">title</a>, 
 <a href="#note">note</a>.  
 Optional fields: 
 <a href="#month">month</a>, 
@@ -1576,23 +1645,38 @@ optional <a href="#key">key</a> field, used in some styles for
 alphabetizing, for cross referencing, or for forming a
 <code>\bibitem</code> label.  You should include a <a href="#key">
 key</a> field for any entry whose "author" information is missing; the
-"author" information is usually the <a href="#author_field"> author</a>
-field, but for some entry types it can be the <a href="#editor_field">
-editor</a> or even the <a href="#organization">organization</a>
-field.  Do not confuse the <a href="#key">key</a> field with the key
-that appears in the <code>\cite</code> command and at the beginning of
-the database entry; this field is named "key" only for compatibility
-with <i>Scribe</i>.
+"author" information is usually the <a href="#author">
+author</a> field, but for some entry types it can be the <a
+href="#editor"> editor</a> or even the <a href="#organization">
+organization</a> field.  Do not confuse the <a href="#key"> key</a>
+field with the <a href="citekey"> citekey</a> that appears in the
+<code>\cite</code> command and at the beginning of the database entry;
+this field is named "key" only for compatibility with <i>Scribe</i>.
 </p>
 
-<p>Bibtex.php uses two extra optional fields for each entry type:
-<strong><a name="keywords">keywords</a></strong> and <strong><a
-name="url">url</a></strong>.  Keywords is used to assign one or more
-keywords to the entry that can be used to group entries into subject
-areas or bibliographies.  URL is typically used to point to the actual
+<p>BibTeX recognizes two more fields not mentioned above.  The <a
+href="#annote"> annote</a> field can be used to produce an annotated
+bibliography.  The <a href="#crossref"> crossref</a> field can be used
+for cross-referencing between entries; see the LaTeX manual for
+details. </p>
+
+<a name="keywords"/> <a name="url"/> <a name="abstract"/>
+<p>Bibtex.php uses some extra fields.  The <strong> keywords </strong>
+field is used to assign one or more keywords to the entry that can be
+used to group entries into subject areas or bibliographies.  The
+<strong> url </strong> field is typically used to point to the actual
 paper on the web.  Both keywords and url can have multiple values,
-which must be comma separated in the bib file, or entered on separate
-lines in the bibtex.php interface. </p>
+which must be entered on separate lines in the bibtex.php interface,
+or comma separated in the bib file.  The <strong> abstract </strong>
+field can be used to keep the abstract of a paper.  You can include
+any other fields you want in an entry, bibtex.php will keep them in
+its database, and BibTeX will ignore them when typesetting a
+bibliography. </p>
+
+<p>Finally, <a href="#entrytype"> entrytype</a>, which is used to
+classify entries, and <a href="#citekey"> citekey</a>, which is used
+for referencing an entry, are not fields in the above sense, but
+appear as such in the bibtex.php interface. </p>
 
 
 <h3><a name="fields">Fields</a></h3>
@@ -1617,16 +1701,16 @@ the complete address.  </dd>
 styles, but may be used by others that produce an annotated
 bibliography. </dd>
 
-<dt><strong><a name="author_field">author</a></strong></dt>
+<dt><strong><a name="author">author</a></strong></dt>
 
 <dd>The name(s) of the author(s), in the format described in the <a
-href="#author"> Names</a> section.  </dd>
+href="#names"> Names</a> section.  </dd>
 
 <dt><strong><a name="booktitle">booktitle</a></strong></dt>
 
 <dd>Title of a book, part of which is being cited.  See the <a
-href="#title">Titles</a> section for how to type titles.  For book
-entries, use the <a href="#title_field"> title</a> field
+href="#titles">Titles</a> section for how to type titles.  For book
+entries, use the <a href="#title"> title</a> field
 instead. </dd>
 
 <dt><strong><a name="chapter">chapter</a></strong></dt>
@@ -1643,11 +1727,11 @@ instead. </dd>
 ordinal, and should have the first letter capitalized, as shown here;
 the standard styles convert to lower case when necessary. </dd>
 
-<dt><strong><a name="editor_field">editor</a></strong></dt>
+<dt><strong><a name="editor">editor</a></strong></dt>
 
-<dd>Name(s) of editor(s), typed as indicated in the <a href="#author">
-Names</a> section.  If there is also an <a href="#author_field">
-author</a> field, then the <a href="#editor_field"> editor</a> field
+<dd>Name(s) of editor(s), typed as indicated in the <a href="#names">
+Names</a> section.  If there is also an <a href="#author">
+author</a> field, then the <a href="#editor"> editor</a> field
 gives the editor of the book or collection in which the reference
 appears. </dd>
 
@@ -1718,13 +1802,13 @@ T<small>E</small>X to denote number ranges (as in
 <dt><strong><a name="series">series</a></strong></dt>
 
 <dd>The name of a series or set of books.  When citing an entire book,
-the the <a href="#title_field"> title</a> field gives its title and an
+the the <a href="#title"> title</a> field gives its title and an
 optional <a href="#series"> series</a> field gives the name of a
 series or multi-volume set in which the book is published. </dd>
 
-<dt><strong><a name="title_field">title</a></strong></dt>
+<dt><strong><a name="title">title</a></strong></dt>
 
-<dd>The work\'s title, typed as explained in the <a href="#title">
+<dd>The work\'s title, typed as explained in the <a href="#titles">
 Titles</a> section. </dd>
 
 <dt><strong><a name="type">type</a></strong></dt>
@@ -1745,7 +1829,7 @@ last four nonpunctuation characters are numerals, such as "(about
 
 </dl>
 
-<h3><a name="author"/><a name="editor"/>Names</h3>
+<h3><a name="names">Names</a></h3>
 
 <p>The text of an <tt>author</tt> or <tt>editor</tt> field represents
  a name.  In bibtex.php, multiple names should be entered on separate
@@ -1765,7 +1849,7 @@ last four nonpunctuation characters are numerals, such as "(about
  characters, please refer to the <a href="#nonenglish"> Non-English
  characters</a> section.</p>
 
-<h3><a name="title">Titles</a></h3>
+<h3><a name="titles">Titles</a></h3>
 
 <p>The bibliography style determines whether or not a title is
  capitalized; the titles of books usually are, the titles of articles
@@ -1812,11 +1896,11 @@ last four nonpunctuation characters are numerals, such as "(about
 <td> \\\'{o}: &oacute;</td>
 <td> \v{s}: &scaron; </td>
 <td> \H{o}: &#x0151;</td>
-<td> \b{o}: o&#x0331;</td>
+<td> \b{o}: <u>o</u></td>
 <td> \d{s}: &#x1E63;</td>
 <td> \.{I}: &#x0130;</td>
 <td> \c{c}: &ccedil; </td>
-<td> \t{oo}: o &#x0311;o</td>
+<td> \t{oo}: o&#x0361;o</td>
 </tr></table>
 
 <p>Note that the letters "i" and "j" require special treatment when
@@ -1887,7 +1971,7 @@ last four nonpunctuation characters are numerals, such as "(about
 ';
 
 $html_footer = '<p class="rcsid">'.rcsid. 
-'&nbsp;&nbsp; <a href="?fn=source">download</a> </p>
+'&nbsp;&nbsp; <a href="?fn=download">download</a> </p>
 </body>
 </html>
 ';
