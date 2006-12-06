@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.12 2006/12/04 23:52:39 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.13 2006/12/05 00:25:08 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -20,8 +20,8 @@ $mysql = array
  * Variables starting with '_' are REQUEST variables.
  */
 $logged_in = false;
-$fn_output = array('search', 'select', 'show', 'index');
 $fn_header = array('bibtex', 'login', 'help', 'source');
+$fn_output = array('search', 'select', 'show', 'index');
 $fn_modify = array
 ('delete', 'addkey', 'delkey', 'edit_value', 'new_entry', 'edit_entry', 
  'copy_entry', 'entry', 'import');
@@ -39,10 +39,13 @@ function main() {
   } else {
     echo $html_header;
     echo navbar();
-    if (in_array($_fn, $fn_output)) $_fn();
-    elseif (in_array($_fn, $fn_modify))
-      $logged_in ? $_fn() : print(h('p', 'Operation not allowed.'));
-    else print(h('p', 'Operation not recognized.'));
+    if (isset($_fn)) {
+      if (in_array($_fn, $fn_output)) $_fn();
+      elseif (in_array($_fn, $fn_modify))
+	$logged_in ? $_fn() : print(h('p', 'Operation not allowed.'));
+      else print(h('p', 'Operation not recognized.'));
+    }
+
     //echo '<pre>'; print_r($_REQUEST); echo '</pre>';
     //echo '<pre>'; print_r($_SERVER); echo '</pre>';
     //phpinfo();
@@ -62,7 +65,8 @@ function navbar() {
 	h('td', navbar_index()).
 	h('td', navbar_new()).
 	h('td', navbar_sort()).
-	h('td', navbar_login())
+	h('td', navbar_login()).
+	h('td', navbar_help())
 	));
 }
 
@@ -113,6 +117,10 @@ function navbar_login() {
     h_get('Login', array('fn' => 'login'));
 }
  
+function navbar_help() {
+  return h_help('Help');
+}
+
 /** selection_form($select, $title) generates the entry selection form.
  * select is an array[entryid][field]=value(s)
  * title is the title of the page
@@ -121,7 +129,7 @@ function selection_form($select, $title) {
   global $logged_in;
   $nselect = count($select);
   if ($nselect == 0) {
-    echo h('p', h('b', $title));
+    echo h('p', h('strong', $title));
     return;
   }
   echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
@@ -131,7 +139,7 @@ function selection_form($select, $title) {
   echo h_hidden('nselect', $nselect);
 
   echo h_start('p');
-  echo h('b', $title);
+  echo h('strong', $title);
   echo '&nbsp; Select: ';
   echo h_a('All', 'javascript:checkAll(true)')."\n"; 
   echo h_a('None', 'javascript:checkAll(false)')."\n";
@@ -291,13 +299,13 @@ function index() {
   natcasesort($uniq_vals);
   $nvals = count($uniq_vals);
   if ($logged_in) {
-    echo h('p', h('b', "$_field index ($nvals values) &nbsp;").
+    echo h('p', h('strong', "$_field index ($nvals values) &nbsp;").
 	   h('small', "(Click on a box to edit, click on a value to select)"));
     echo h_start('form', array('action' => $_SERVER['PHP_SELF'], 'name' => 'index_form'));
     echo h_hidden('fn', 'edit_value');
     echo h_hidden('field', $_field);
     echo h_hidden('newval', '');
-  } else echo h('p', h('b', "$_field index ($nvals values)"));
+  } else echo h('p', h('strong', "$_field index ($nvals values)"));
   foreach ($uniq_vals as $v) {
     $vv = addslashes($v);
     if ($logged_in) echo h_radio('value', $v, "edit_value('$vv')");
@@ -337,24 +345,23 @@ function entry_form($entry, $title = NULL, $id = NULL) {
 			     'name' => 'entry_form',
 			     'method' => 'get'));
   echo h('p',
-	 ($title ? h('b', $title).' &nbsp; ' : '').
+	 ($title ? h('strong', $title).' &nbsp; ' : '').
 	 h_hidden('fn', 'entry').
 	 ($id ? h_hidden('id', $id) : '').
 	 h_submit('Submit').
 	 h_button('Cancel', 'window.back()').
 	 h_submit('Don\'t check errors', 'nocheck').
-	 h('br').'Please enter additional authors, editors, urls, and keywords on separate lines.'
+	 h('br').'Please enter multiple authors, editors, urls, and keywords on separate lines.'
 	 );
   echo h_start('p');
-  echo h('b', 'Required fields') . h('br');
-  $printed = array();
+  echo h('strong', 'Required fields ').h_help('?', 'required').h('br');
   foreach ($index_fields as $f)
     entry_field($entry, $f);
   foreach ($fields['required'] as $f)
     entry_field($entry, $f);
   for ($i = 1; $i <= 3; $i++)
-    entry_field($entry, NULL, $printed);
-  echo h('b', 'Optional fields') . h('br');
+    entry_field($entry, NULL);
+  echo h('strong', 'Optional fields ').h_help('?', 'optional').h('br');
   foreach ($extra_fields as $f)
     entry_field($entry, $f);
   foreach ($fields['optional'] as $f)
@@ -377,53 +384,55 @@ function entry_form($entry, $title = NULL, $id = NULL) {
  */
 $entry_field_index = 0;
 $entry_field_printed = array();
+$field_input_size = 10;
+$value_input_size = 40;
+
 function entry_field(&$entry, $field) {
-  global $entry_field_index, $entry_field_printed;
-  if (is_null($field)) {
-    $i = ++$entry_field_index;
-    entry_field_name("f$i", '');
-    entry_field_value("v$i", '');
-  } elseif (is_array($field)) {
+  global $entry_field_index;
+  if (is_array($field)) {
     $i0 = $entry_field_index;
-    foreach ($field as $f) {
-      if (isset($entry[$f])) {
+    foreach ($field as $f) 
+      if (isset($entry[$f]))
 	entry_field($entry, $f);
-      }
-    }
-    if ($i0 == $entry_field_index) {
-      $i = ++$entry_field_index;
-      entry_field_name("f$i", $field);
-      entry_field_value("v$i", '');
-      foreach ($field as $f) 
-	$entry_field_printed[$f] = 1;
-    }
-  } elseif (isset($entry[$field])) {
-    $val = $entry[$field];
-    if (!is_array($val)) $val = array($val);
-    foreach ($val as $v) {
-      $i = ++$entry_field_index;
-      entry_field_name("f$i", $field);
-      entry_field_value("v$i", $v);
-    }
-    $entry_field_printed[$field] = 1;
+    if ($i0 == $entry_field_index) 
+      print_entry_field($field, NULL);
+  } elseif (isset($field)) {
+    $val = isset($entry[$field]) ? $entry[$field] : NULL;
+    if (is_array($val))
+      foreach ($val as $v) 
+	print_entry_field($field, $v);
+    else print_entry_field($field, $val);
   } else {
-    $i = ++$entry_field_index;
-    entry_field_name("f$i", $field);
-    entry_field_value("v$i", '');
-    $entry_field_printed[$field] = 1;
+    print_entry_field(NULL, NULL);
   }
 }
 
-function entry_field_name($name, $value) {
-  if (is_array($value))
-    echo h_select($name, $value);
-  else echo h_text($name, $value, array('size' => 10));
+function print_entry_field($field, $value) {
+  global $field_input_size, $value_input_size, $entry_field_index, $entry_field_printed;
+  $n = ++$entry_field_index;
+  $field_name = "f$n";
+  $value_name = "v$n";
+  if (!isset($field)) echo h_text($field_name, '', array('size' => $field_input_size));
+  elseif (is_array($field)) echo h_select($field_name, $field);
+  else echo h_text($field_name, $field, array('size' => $field_input_size));
+  if (!isset($value)) echo h_text($value_name, '', array('size' => $value_input_size));
+  elseif (is_array($value)) echo h_select($value_name, $value);
+  else echo h_text($value_name, $value, array('size' => $value_input_size));
+  if (isset($field)) {
+    if (is_array($field)) {
+      foreach ($field as $f)
+	$entry_field_printed[$field] = 1;
+      echo h_help('?', $field[0]);
+    } else {
+      $entry_field_printed[$field] = 1;
+      if ($field == 'entrytype' and isset($value))
+	echo h_help('?', $value);
+      else echo h_help('?', $field);
+    }
+  }
+  echo h('br');
 }
 
-function entry_field_value($name, $value) {
-  echo h_text($name, $value, array('size' => 40)).h('br');
-}
- 
 /** new_entry($_type) creates a new entry of a given type.
  * $_type: gives the type of entry
  * if type == "Import BibTeX" then do import.
@@ -458,7 +467,7 @@ function entry($fields = NULL) {
   if (!$fields) return;
   $err = $_nocheck ? NULL : entry_errors($fields, $_id);
   if ($err) {
-    echo h('p', h('b', 'Entry errors'));
+    echo h('p', h('strong', 'Entry errors'));
     echo h('ol', h('li', implode("\n</li><li>", $err)));
     echo h('p', 'Please go back to fix the errors or 
 submit with the "Don\'t check errors" button.');
@@ -475,28 +484,31 @@ function entry_errors(&$entry, $editid) {
     $extra_fields, $extra_optional_fields;
   $err = array();
   $type = isset($entry['entrytype']) ? $entry['entrytype'] : NULL;
-  if (!$type) $err[] = 'entrytype: not set.';
+  if (!$type) $err[] = 'entrytype: not set. '.h_help('?', 'entrytype');
   $fields = isset($entry_types[$type]) ? $entry_types[$type] : NULL;
-  if (!$fields) $err[] = $type . ': not a valid entrytype.';
+  if (!$fields) $err[] = $type . ': not a valid entrytype. '.
+                         h_help('?', 'entrytype'); 
   $citekey = isset($entry['citekey']) ? $entry['citekey'] : NULL;
   $others = isset($citekey) ? sql_select('citekey', $citekey) : NULL;
   if ($others) {
     foreach ($others as $id => $e) {
       if ($id == $editid) continue;
-      $err[] = $citekey . ': not a unique citekey.';
+      $err[] = $citekey . ': not a unique citekey. '.
+               h_help('?', 'citekey');
     }
   }
   if ($fields) {
     foreach ($fields['required'] as $f) {
       if (!is_array($f)) {
 	if (!isset($entry[$f]))
-	  $err[] = $f . ': required field missing.';
+	  $err[] = $f . ': required field missing. ' . h_help('?', $f);
       } else {
 	$found = false;
 	foreach($f as $ff)
 	  if (isset($entry[$ff])) $found = true;
 	if (!$found)
-	  $err[] = implode(' or ', $f) . ': required field missing.';
+	  $err[] = implode(' or ', $f) . ': required field missing. '.
+                   h_help('?', $type);
       }
     }
   }
@@ -505,10 +517,11 @@ function entry_errors(&$entry, $editid) {
   foreach ($entry as $f => $v) {
     if (!deep_in_array($f, $allfields))
       $err[] = $f . ': not a recognized field for the ' . 
-	$type . ' entrytype.';
+	$type . ' entrytype. ' . h_help('?', $type);
     foreach ((is_array($v) ? $v : array($v)) as $vv)
       if (preg_match('/[^\000-\177]/', $vv))
-	$err[] = $vv . ': contains non-ascii characters.';
+	$err[] = $vv . ': contains non-ascii characters. '.
+	         h_help('?', 'nonenglish');
   }
   // anything else illegal in bibtex specs?
   return $err;
@@ -569,7 +582,7 @@ function insert($entry, $id = NULL) {
  * TODO. implement import
  */
 function import() {
-  echo h('b', 'import not implemented yet.');
+  echo h('strong', 'import not implemented yet.');
   print_r($_REQUEST);
 }
  
@@ -577,15 +590,22 @@ function import() {
  * TODO: implement help.
  */
 function help() {
-  echo h('b', 'help not implemented yet.');
-  print_r($_REQUEST);
+  //echo h('strong', 'help not implemented yet.');
+  //print_r($_REQUEST);
+  global $html_help, $html_header, $html_footer;
+  echo $html_header;
+  echo $html_help;
+  echo $html_footer;
 }
  
 /** source() TODO prints out the source code.
  */
 function source() {
-  echo h('b', 'source not implemented yet.');
-  print_r($_REQUEST);
+  header('Content-type: text/plain');
+  $filename = $_SERVER['SCRIPT_FILENAME'];
+  $handle = fopen($filename, 'r');
+  echo fread($handle, filesize($filename));
+  fclose($handle);
 }
  
 /** login() presents the user with a login prompt
@@ -682,7 +702,7 @@ function print_author_field(&$entry, $field, $value) {
       $v = $value[$i];
       $txt = name_flip($v);
       if ($v == 'others') {
-	echo ', et.al';
+	echo ', et al';
       } else {
 	if ($i == $n - 1) echo ' and ';
 	elseif ($i > 0) echo ', ';
@@ -765,7 +785,7 @@ function h($name, $attr=NULL, $content=NULL) {
   elseif (is_bool($content))
     return $content ? "<$name$vals>\n" : "</$name>\n";
   else
-    return in_array($name, array('a', 'b', 'i', 'u', 'option')) ?
+    return in_array($name, array('a', 'b', 'i', 'u', 'option', 'strong')) ?
       "<$name$vals>$content</$name>" :
       "<$name$vals>\n$content</$name>\n";
 }
@@ -866,7 +886,12 @@ function h_a($txt, $url, $attr = NULL) {
   return h('a', $attr, $txt);
 }
 
- 
+function h_help($txt, $section = NULL) {
+  if (isset($section)) 
+    return h_a($txt, "$_SERVER[PHP_SELF]?fn=help#$section");
+  else return h_a($txt, "$_SERVER[PHP_SELF]?fn=help");
+} 
+
 /** sql functions 
  * TODO: check each sql statement for sql injection
  */
@@ -1079,7 +1104,8 @@ $entry_types = array
   'optional' => array('type', 'address', 'month', 'note')),
  
  'misc' => array
- ('optional' => array('author', 'title', 'howpublished', 'month', 'year', 'note')),
+ ('required' => array(),
+  'optional' => array('author', 'title', 'howpublished', 'month', 'year', 'note')),
  
  'phdthesis' => array
  ('required' => array('author', 'title', 'school', 'year'), 
@@ -1098,7 +1124,7 @@ $entry_types = array
   'optional' => array('month', 'year'))
  );
  
-/** html_header */
+/** html_header, html_help, html_footer */
 
 $html_header = '<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html 
@@ -1216,7 +1242,652 @@ P.rcsid { font-size:xx-small }
 <body>
 ';
 
-$html_footer = '<p class="rcsid">'.rcsid.'</p>
+$html_help = '
+<h3><a name="entryformat">Entry Format</a></h3>
+
+<p>BibTeX database files (extension <tt>.bib</tt>) are plain text
+ files.  They consist of entries of various kinds. Each entry
+ describes a book, an article, a manual, etc. Example:</p>
+<a name="citekey" />
+
+<pre>  @BOOK{kn:gnus,
+     AUTHOR = "Donald E. Knudson",
+     TITLE = "1966 World Gnus Almanac",
+     PUBLISHER = {Permafrost Press},
+     ADDRESS = {Novosibirsk}
+  }</pre>
+
+<p>The <tt>@BOOK</tt> states that this is an entry of type
+ book. Various entry types are described below. The <tt>kn:gnus</tt>
+ is the <em>cite key</em>, as it appears in the argument of a
+ <tt>\cite</tt> command referring to the entry.</p>
+
+<p>This entry has four <em>fields</em>, named <tt>AUTHOR</tt>,
+ <tt>TITLE</tt>, <tt>PUBLISHER</tt>, and <tt>ADDRESS</tt>. The
+ meanings of these and other fields are described below. A field
+ consists of the name, followed by an "<tt>=</tt>" character with
+ optional space around it, followed by its text. The text of a field
+ is a string of characters, with no unmatched braces, surrounded by
+ either a pair of braces or a pair of <tt>"</tt> characters. Entry
+ fields are separated from one another, and from the key, by commas. A
+ comma may have optional space around it.</p>
+
+<p>The outermost braces that surround the entire entry may be replaced
+ by parentheses. An end-of-line character counts as a space and one
+ space is equivalent to one hundred (as in LaTeX). BibTeX ignores the
+ case of letters in the entry type, cite key, and field names.</p>
+
+<p>The quotes or braces can be omitted around text consisting entirely
+ of numerals: <nobr><tt>Volume = "27"</nobr></tt> is equivalent to
+ <nobr><tt>Volume = 27</tt>.</nobr></p>
+
+<h3><a name="entryfields">Entry Fields</a></h3>
+
+<p> When entering a reference in the database, the first thing to
+decide is what type of entry it is.  No fixed classification scheme
+can be complete, but BibTeX provides enough entry types to handle
+almost any reference reasonably well. </p>
+
+<p> References to different types of publications contain different
+information; a reference to a journal article might include the volume
+and number of the journal, which is usually not meaningful for a book.
+Therefore, database entries of different types have different fields.
+For each entry type, the fields are divided into three classes: </p>
+
+<dl><dt><strong><a name="required">required</a></strong></dt>
+
+<dd>Omitting the field will produce a warning message and, rarely, a
+badly formatted bibliography entry.  If the required information is
+not meaningful, you are using the wrong entry type.  However, if the
+required information is meaningful but, say, already included is some
+other field, simply ignore the warning.  </dd>
+
+<dt><strong><a name="optional">optional</a></strong></dt>
+
+<dd>The field\'s information will be used if present, but can be
+omitted without causing any formatting problems.  You should include
+the optional field if it will help the reader.  </dd>
+
+<dt><strong><a name="ignored">ignored</a></strong></dt>
+
+<dd>The field is ignored.  BibTeX ignores any field that is not
+required or optional, so you can include any fields you want in a
+<tt>bib</tt> file entry.  It\'s a good idea to put all relevant
+information about a reference in its <tt>bib</tt> file entry--even
+information that may never appear in the bibliography.  For example,
+if you want to keep an abstract of a paper in a computer file, put it
+in an <tt>abstract</tt> field in the paper\'s <tt>bib</tt> file entry.
+The <tt>bib</tt> file is likely to be as good a place as any for the
+abstract, and it is possible to design a bibliography style for
+printing selected abstracts.  Note: Misspelling a field name will
+result in its being ignored, so watch out for typos (especially for
+optional fields, since BibTeX won\'t warn you when those are missing).
+</dd> </dl>
+
+<h3><a name="entrytype">Entry Types</a></h3>
+
+<p> The following are the standard entry types, along with their
+required and optional fields, that are used by the standard
+bibliography styles.  The fields within each class (required or
+optional) are listed in order of occurrence in the output, except that
+a few entry types may perturb the order slightly, depending on what
+fields are missing.  These entry types are similar to those adapted by
+Brian Reid from the classification scheme of van&nbsp;Leunen&nbsp; for
+use in the <em>Scribe</em> system.  The meanings of the individual
+fields are explained in the next section.  Some nonstandard
+bibliography styles may ignore some optional fields in creating the
+reference.  Remember that, when used in the <tt>bib</tt> file, the
+entry-type name is preceded by an <tt>@</tt> character.  </p>
+
+<dl>
+
+<dt><strong><a name="article">article</a></strong></dt>
+
+<dd>An article from a journal or magazine.  
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#journal">journal</a>, 
+<a href="#year">year</a>.
+Optional fields: 
+<a href="#volume">volume</a>, 
+<a href="#number">number</a>,
+<a href="#pages">pages</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>.
+</dd>
+
+<dt><strong><a name="book">book</a></strong></dt>
+
+<dd>A book with an explicit publisher.  
+Required fields: 
+<a href="#author_field">author</a> or 
+<a href="#editor_field">editor</a>, 
+<a href="#title_field">title</a>, 
+<a href="#publisher">publisher</a>, 
+<a href="#year">year</a>.
+Optional fields: 
+<a href="#volume">volume</a> or 
+<a href="#number">number</a>, 
+<a href="#series">series</a>, 
+<a href="#address">address</a>, 
+<a href="#edition">edition</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="booklet">booklet</a></strong></dt>
+
+<dd>A work that is printed and bound, but without a named publisher or
+sponsoring institution.  
+Required field: 
+<a href="#title_field">title</a>.
+Optional fields: 
+<a href="#author_field">author</a>, 
+<a href="#howpublished">howpublished</a>, 
+<a href="#address">address</a>, 
+<a href="#month">month</a>, 
+<a href="#year">year</a>,
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="conference">conference</a></strong></dt>
+
+<dd>The same as <a href="#inproceedings">inproceedings</a>, included
+for <em>Scribe</em> compatibility. </dd>
+
+<dt><strong><a name="inbook">inbook</a></strong></dt>
+
+<dd>A part of a book, which may be a chapter (or section or whatever)
+and/or a range of pages.  
+Required fields: 
+<a href="#author_field">author</a> or 
+<a href="#editor_field">editor</a>, 
+<a href="#title_field">title</a>, 
+<a href="#chapter">chapter</a> and/or 
+<a href="#pages">pages</a>, 
+<a href="#publisher">publisher</a>, 
+<a href="#year">year</a>.  
+Optional fields: 
+<a href="#volume">volume</a> or 
+<a href="#number">number</a>, 
+<a href="#series">series</a>, 
+<a href="#type">type</a>, 
+<a href="#address">address</a>, 
+<a href="#edition">edition</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>.
+</dd>
+
+<dt><strong><a name="incollection">incollection</a></strong></dt>
+
+<dd>A part of a book having its own title.  
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#booktitle">booktitle</a>, 
+<a href="#publisher">publisher</a>,
+<a href="#year">year</a>.  
+Optional fields: 
+<a href="#editor_field">editor</a>, 
+<a href="#volume">volume</a> or 
+<a href="#number">number</a>, 
+<a href="#series">series</a>, 
+<a href="#type">type</a>,
+<a href="#chapter">chapter</a>, 
+<a href="#pages">pages</a>, 
+<a href="#address">address</a>, 
+<a href="#edition">edition</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="inproceedings">inproceedings</a></strong></dt>
+
+<dd>An article in a conference proceedings.  
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#booktitle">booktitle</a>, 
+<a href="#year">year</a>.  
+Optional fields: 
+<a href="#editor_field">editor</a>, 
+<a href="#volume">volume</a> or 
+<a href="#number">number</a>, 
+<a href="#series">series</a>, 
+<a href="#pages">pages</a>, 
+<a href="#address">address</a>, 
+<a href="#month">month</a>, 
+<a href="#organization">organization</a>,
+<a href="#publisher">publisher</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="manual">manual</a></strong></dt>
+
+<dd>Technical documentation.  
+Required field: 
+<a href="#title_field">title</a>.  
+Optional fields: 
+<a href="#author_field">author</a>, 
+<a href="#organization">organization</a>, 
+<a href="#address">address</a>, 
+<a href="#edition">edition</a>, 
+<a href="#month">month</a>, 
+<a href="#year">year</a>, 
+<a href="#note">note</a>.
+</dd>
+
+<dt><strong><a name="mastersthesis">mastersthesis</a></strong></dt>
+
+<dd>A Master\'s thesis.  
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#school">school</a>, 
+<a href="#year">year</a>.  
+Optional fields: 
+<a href="#type">type</a>, 
+<a href="#address">address</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="misc">misc</a></strong></dt>
+
+<dd>Use this type when nothing else fits.  
+Required fields: 
+none.
+Optional fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#howpublished">howpublished</a>, 
+<a href="#month">month</a>, 
+<a href="#year">year</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="phdthesis">phdthesis</a></strong></dt>
+
+<dd>A PhD thesis.  
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#school">school</a>, 
+<a href="#year">year</a>.  
+Optional fields: 
+<a href="#type">type</a>,
+<a href="#address">address</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="proceedings">proceedings</a></strong></dt>
+
+<dd>The proceedings of a conference.  
+Required fields: 
+<a href="#title_field">title</a>, 
+<a href="#year">year</a>.  
+Optional fields:
+<a href="#editor_field">editor</a>, 
+<a href="#volume">volume</a> or 
+<a href="#number">number</a>, 
+<a href="#series">series</a>, 
+<a href="#address">address</a>, 
+<a href="#month">month</a>, 
+<a href="#organization">organization</a>, 
+<a href="#publisher">publisher</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="techreport">techreport</a></strong></dt>
+
+<dd>A report published by a school or other institution, usually
+numbered within a series.  
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#institution">institution</a>, 
+<a href="#year">year</a>.  
+Optional fields: 
+<a href="#type">type</a>, 
+<a href="#number">number</a>, 
+<a href="#address">address</a>, 
+<a href="#month">month</a>, 
+<a href="#note">note</a>. 
+</dd>
+
+<dt><strong><a name="unpublished">unpublished</a></strong></dt>
+
+<dd>A document having an author and title, but not formally published.
+Required fields: 
+<a href="#author_field">author</a>, 
+<a href="#title_field">title</a>, 
+<a href="#note">note</a>.  
+Optional fields: 
+<a href="#month">month</a>, 
+<a href="#year">year</a>. 
+</dd>
+
+</dl>
+
+<p>In addition to the fields listed above, each entry type also has an
+optional <a href="#key">key</a> field, used in some styles for
+alphabetizing, for cross referencing, or for forming a
+<code>\bibitem</code> label.  You should include a <a href="#key">
+key</a> field for any entry whose "author" information is missing; the
+"author" information is usually the <a href="#author_field"> author</a>
+field, but for some entry types it can be the <a href="#editor_field">
+editor</a> or even the <a href="#organization">organization</a>
+field.  Do not confuse the <a href="#key">key</a> field with the key
+that appears in the <code>\cite</code> command and at the beginning of
+the database entry; this field is named "key" only for compatibility
+with <i>Scribe</i>.
+</p>
+
+<p>Bibtex.php uses two extra optional fields for each entry type:
+<strong><a name="keywords">keywords</a></strong> and <strong><a
+name="url">url</a></strong>.  Keywords is used to assign one or more
+keywords to the entry that can be used to group entries into subject
+areas or bibliographies.  URL is typically used to point to the actual
+paper on the web.  Both keywords and url can have multiple values,
+which must be comma separated in the bib file, or entered on separate
+lines in the bibtex.php interface. </p>
+
+
+<h3><a name="fields">Fields</a></h3>
+
+<p>Below is a description of all fields recognized by the standard
+bibliography styles.  An entry can also contain other fields, which
+are ignored by those styles.  </p>
+
+<dl>
+
+<dt><strong><a name="address">address</a></strong></dt>
+
+<dd>Usually the address of the <a href="#publisher">publisher</a> or
+other type of institution.  For major publishing houses,
+van&nbsp;Leunen recommends omitting the information entirely.  For
+small publishers, on the other hand, you can help the reader by giving
+the complete address.  </dd>
+
+<dt><strong><a name="annote">annote</a></strong></dt>
+
+<dd>An annotation.  It is not used by the standard bibliography
+styles, but may be used by others that produce an annotated
+bibliography. </dd>
+
+<dt><strong><a name="author_field">author</a></strong></dt>
+
+<dd>The name(s) of the author(s), in the format described in the <a
+href="#author"> Names</a> section.  </dd>
+
+<dt><strong><a name="booktitle">booktitle</a></strong></dt>
+
+<dd>Title of a book, part of which is being cited.  See the <a
+href="#title">Titles</a> section for how to type titles.  For book
+entries, use the <a href="#title_field"> title</a> field
+instead. </dd>
+
+<dt><strong><a name="chapter">chapter</a></strong></dt>
+
+<dd>A chapter (or section or whatever) number. </dd>
+
+<dt><strong><a name="crossref">crossref</a></strong></dt>
+
+<dd>The database key of the entry being cross referenced. </dd>
+
+<dt><strong><a name="edition">edition</a></strong></dt>
+
+<dd>The edition of a book--for example, "Second".  This should be an
+ordinal, and should have the first letter capitalized, as shown here;
+the standard styles convert to lower case when necessary. </dd>
+
+<dt><strong><a name="editor_field">editor</a></strong></dt>
+
+<dd>Name(s) of editor(s), typed as indicated in the <a href="#author">
+Names</a> section.  If there is also an <a href="#author_field">
+author</a> field, then the <a href="#editor_field"> editor</a> field
+gives the editor of the book or collection in which the reference
+appears. </dd>
+
+<dt><strong><a name="howpublished">howpublished</a></strong></dt>
+
+<dd>How something strange has been published.  The first word should
+be capitalized. </dd>
+
+<dt><strong><a name="institution">institution</a></strong></dt>
+
+<dd>The sponsoring institution of a technical report. </dd>
+
+<dt><strong><a name="journal">journal</a></strong></dt>
+
+<dd>A journal name.</dd>
+
+<dt><strong><a name="key">key</a></strong></dt>
+
+<dd>Used for alphabetizing, cross referencing, and creating a label
+when the "author" information is missing.  This field should not be
+confused with the key that appears in the <code>\cite</code> command
+and at the beginning of the database entry. </dd>
+
+<dt><strong><a name="month">month</a></strong></dt>
+
+<dd>The month in which the work was published or, for an unpublished
+work, in which it was written.  You should use the standard
+three-letter abbreviation, as described in Appendix B.1.3 of the LaTeX
+book. </dd>
+
+<dt><strong><a name="note">note</a></strong></dt>
+
+<dd>Any additional information that can help the reader.  The first
+word should be capitalized. </dd>
+
+<dt><strong><a name="number">number</a></strong></dt>
+
+<dd>The number of a journal, magazine, technical report, or of a work
+in a series.  An issue of a journal or magazine is usually identified
+by its volume and number; the organization that issues a technical
+report usually gives it a number; and sometimes books are given
+numbers in a named series. </dd>
+
+<dt><strong><a name="organization">organization</a></strong></dt>
+
+<dd>The organization that sponsors a conference or that publishes a
+manual. </dd>
+
+<dt><strong><a name="pages">pages</a></strong></dt>
+
+<dd>One or more page numbers or range of numbers, such as
+<tt>42-111</tt> or <tt>7,41,73-97</tt> or <tt>43+</tt> (the
+"<tt>+</tt>" in this last example indicates pages following that
+don\'t form a simple range).  To make it easier to maintain
+<em>Scribe</em>-compatible databases, the standard styles convert a
+single dash (as in <tt>7-33</tt>) to the double dash used in
+T<small>E</small>X to denote number ranges (as in
+<tt>7-33</tt>). </dd>
+
+<dt><strong><a name="publisher">publisher</a></strong></dt>
+
+<dd>The publisher\'s name. </dd>
+
+<dt><strong><a name="school">school</a></strong></dt>
+
+<dd>The name of the school where a thesis was written. </dd>
+
+<dt><strong><a name="series">series</a></strong></dt>
+
+<dd>The name of a series or set of books.  When citing an entire book,
+the the <a href="#title_field"> title</a> field gives its title and an
+optional <a href="#series"> series</a> field gives the name of a
+series or multi-volume set in which the book is published. </dd>
+
+<dt><strong><a name="title_field">title</a></strong></dt>
+
+<dd>The work\'s title, typed as explained in the <a href="#title">
+Titles</a> section. </dd>
+
+<dt><strong><a name="type">type</a></strong></dt>
+
+<dd>The type of a technical report--for example, "Research Note". </dd>
+
+<dt><strong><a name="volume">volume</a></strong></dt>
+
+<dd>The volume of a journal or multivolume book. </dd>
+
+<dt><strong><a name="year">year</a></strong></dt>
+
+<dd>The year of publication or, for an unpublished work, the year it
+was written.  Generally it should consist of four numerals, such as
+<tt>1984</tt>, although the standard styles can handle any year whose
+last four nonpunctuation characters are numerals, such as "(about
+1984)". </dd>
+
+</dl>
+
+<h3><a name="author"/><a name="editor"/>Names</h3>
+
+<p>The text of an <tt>author</tt> or <tt>editor</tt> field represents
+ a name.  In bibtex.php, multiple names should be entered on separate
+ lines.  They will be joined using "and" in the BibTeX output. The
+ bibliography style determines how the names are printed: whether the
+ first name or last name appears first, if the full first name or just
+ the first initial is used, etc. Most names can be entered in the
+ obvious way, i.e., <tt>"John Paul Jones"</tt> or <tt>"Jones, John
+ Paul"</tt>. However, only the second form, with a comma, should be
+ used for people who have last names with multiple parts that are
+ capitalized. People with a "Jr." in their name should be entered as
+ <tt>"Ford, Jr., Henry"</tt>.</p>
+
+<p>If an entry has more names than you want to type, just end the list
+ of names with "others"; the standard styles convert this to the
+ conventional <i>et al.</i> For foreign names with accented
+ characters, please refer to the <a href="#nonenglish"> Non-English
+ characters</a> section.</p>
+
+<h3><a name="title">Titles</a></h3>
+
+<p>The bibliography style determines whether or not a title is
+ capitalized; the titles of books usually are, the titles of articles
+ usually are not.  You type a title the way it should appear if it is
+ capitalized.</p>
+
+<pre>     title = "The Agony and the Ecstasy"</pre>
+
+<p>You should capitalize the first word of the title, the first word
+ after a colon, and all other words except articles and unstressed
+ conjunctions and prepositions.  BibTeX will change uppercase letters
+ to lowercase if appropriate.  Uppercase letters that should not be
+ changed are enclosed in braces.  The following two titles are
+ equivalent; the A of Africa will not be made lowercase.</p>
+
+<pre>
+     "The Gnats and Gnus of {Africa}"
+     "The Gnats and Gnus of {A}frica"
+</pre>
+
+<h3><a name="nonenglish">Non-English Characters</a></h3>
+
+<p>Bibtex.php does not currently support non-ascii characters.  To
+ enter foreign characters you need to use LaTeX escape sequences
+ described below.  BibTeX is sometimes confused by these sequences,
+ but it will do the right thing if you put curly braces immediately
+ around the sequence, e.g. {\"{o}} or {\"o} will work. </p>
+
+<p>The following accents may be placed on letters.  Although "o" is
+ used in most of the examples, the accents may be placed on any
+ letter.  Accents may even be placed above a "missing" letter; for
+ example, <tt>\~{}</tt> produces a tilde over a blank space.</p>
+
+<table border="1"><tr>
+<td> \`{o}: &ograve;</td>
+<td> \^{o}: &ocirc;</td>
+<td> \"{o}: &ouml;</td>
+<td> \={o}: &#x014D;</td>
+<td> \.{c}: &#x010B;</td>
+<td> \i:    &#x0131;</td>
+<td> \~{o}: &otilde;</td>
+<td> \u{o}: &#x014F;</td>
+</tr><tr>
+<td> \\\'{o}: &oacute;</td>
+<td> \v{s}: &scaron; </td>
+<td> \H{o}: &#x0151;</td>
+<td> \b{o}: o&#x0331;</td>
+<td> \d{s}: &#x1E63;</td>
+<td> \.{I}: &#x0130;</td>
+<td> \c{c}: &ccedil; </td>
+<td> \t{oo}: o &#x0311;o</td>
+</tr></table>
+
+<p>Note that the letters "i" and "j" require special treatment when
+ they are given accents because it is often desirable to replace the
+ dot with the accent.  For this purpose, the commands <tt>\i</tt> and
+ <tt>\j</tt> can be used to produce dotless letters.  For example,
+ <tt>\^{\i}</tt> should be used for i circumflex: &icirc;, and
+ <tt>\"{\i}</tt> should be used for i umlaut: &iuml;. </p>
+
+<p> Other characters and symbols: </p>
+
+<table border="1"><tr>
+<td>\ae: &aelig;</td>
+<td>\oe: &oelig;</td>
+<td>\aa: &aring; </td>
+<td>\o: &oslash; </td> 
+<td>\l: &#x0142; </td>
+<td>?` or &gt;: &iquest; </td>
+<td>\dag: &dagger; </td>
+<td>\S: &sect;</td>
+<td>\copyright: &copy; </td>
+<td>\ss: &szlig; </td>
+</tr><tr>
+<td>\AE: &AElig;</td>
+<td>\OE: &OElig;</td>
+<td>\AA: &Aring; </td>
+<td>\O: &Oslash; </td> 
+<td>\L: &#x0141; </td>
+<td>!` or &lt;: &iexcl; </td>
+<td>\ddag: &Dagger; </td>
+<td>\P: &para; </td>
+<td>\pounds: &pound; </td>
+</tr></table>
+
+<p>In addition, the following seven symbols need to be escaped with a
+ backslash: \\#, \\$, \\%, \\&amp;, \\_, \\{, \\}. </p>
+
+<h3>References</h3>
+
+<p>Sheldon Green 1995: <i>Hypertext Help with LaTeX</i>.
+ <a href="http://www.giss.nasa.gov/tools/latex/">
+ http://www.giss.nasa.gov/tools/latex</a>.</p>
+
+<p>Dana Jacobsen 1996: <i>BibTeX</i>.
+ <a href="http://www.ecst.csuchico.edu/~jacobsd/bib/formats/bibtex.html">
+ http://www.ecst.csuchico.edu/~jacobsd/bib/formats/bibtex.html</a>.</p>
+
+<p>Leslie Lamport 1994: <i>LaTeX: A Document Preparation System.
+ User\'s Guide and Reference Manual</i>. Second Edition.
+ Addison-Wesley, November 1994. Appendix B.</p>
+
+<p>Oren Patashnik 1988: <i>BibTeXing</i>. The documentation for
+ BibTeX version 0.99b.
+ <a href="http://www.denizyuret.com/ref/patashnik/btxdoc.html">
+ http://www.denizyuret.com/ref/patashnik/btxdoc.html</a>.</p>
+
+<p>Oren Patashnik 1988: <i>Designing BibTeX Styles</i>. Documentatio
+ for bibliography style writers.
+ <a href="http://www.denizyuret.com/ref/patashnik/btxhak.html">
+ http://www.denizyuret.com/ref/patashnik/btxhak.html</a>.</p>
+
+<p>Urs-Jakob Rüetschi 2003: <i>The BibTeX Bibliography Database</i>.
+ <a href="http://www.geo.unizh.ch/~uruetsch/varia/bibtex.html">
+ http://www.geo.unizh.ch/~uruetsch/varia/bibtex.html</a>.</p>
+
+<p>CTAN, the <i>Comprehensive TeX Archive Network</i>, URL
+ <a href="http://www.ctan.org/">http://www.ctan.org/</a>.</p>
+';
+
+$html_footer = '<p class="rcsid">'.rcsid. 
+'&nbsp;&nbsp; <a href="?fn=source">download</a> </p>
 </body>
 </html>
 ';
