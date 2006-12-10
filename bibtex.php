@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.16 2006/12/06 18:49:58 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.17 2006/12/10 11:30:58 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -593,22 +593,56 @@ function deep_in_array($value, $array) {
 }
  
 /** insert($entry, $id) inserts or replaces an entry
- * TODO: do a diff instead of deleting the original entry when editing.
  */
 function insert(&$entry, $id = NULL) {
-  //echo '<pre>Before '; print_r($entry); echo '</pre>';
-  if (isset($id)) sql_delete_entry($id);
-  else $id = sql_newid();
-  foreach ($entry as $f => $v) {
-    foreach ((is_array($v)?$v:array($v)) as $val) {
-      sql_insert_field($id, $f, $val);
+  if (!isset($id)) {
+    $id = sql_newid();
+    foreach ($entry as $f => $v) {
+      foreach ((is_array($v)?$v:array($v)) as $val) {
+	sql_insert_field($id, $f, $val);
+      }
     }
+  } else {
+    $old = sql_select_entry($id);
+    //echo '<pre>'; print_r($old); print_r($entry); echo '</pre>';
+    foreach ($old as $f => $v) {
+      if (isset($entry[$f]) and field_equal($v, $entry[$f])) continue;
+      foreach ((is_array($v)?$v:array($v)) as $val) {
+	//print "Deleting [$f] = [$val] <br/>\n";
+	sql_delete_field($id, $f, $val);
+      }
+      unset($old[$f]);
+    }
+    //echo '<pre>'; print_r($old); print_r($entry); echo '</pre>';
+    foreach ($entry as $f => $v) {
+      if (isset($old[$f])) {
+	field_equal($v, $old[$f]) or exit("Array diff error");
+      } else {
+	foreach ((is_array($v)?$v:array($v)) as $val) {
+	  //print "Inserting [$f] = [$val] <br/>\n";
+	  sql_insert_field($id, $f, $val);
+	}
+      }
+    }
+    //echo '<pre>'; print_r($old); print_r($entry); echo '</pre>';
   }
-  //$e = sql_select_entry($id);
-  //echo '<pre>After '; print_r($e); echo '</pre>';
   show(array($id));
 }
- 
+
+function field_equal(&$a1, &$a2) {
+  if (is_array($a1) and is_array($a2)) {
+    foreach ($a1 as $f => $v)
+      if (!isset($a2[$f]) or !field_equal($v, $a2[$f]))
+	return false;
+    foreach ($a2 as $f => $v)
+      if (!isset($a1[$f]) or !field_equal($v, $a1[$f]))
+	return false;
+    return true;
+  } else {
+    return ($a1 == $a2);
+  }
+}
+
 /** import() TODO
  * TODO. implement import
  */
@@ -617,8 +651,8 @@ function import() {
   print_r($_REQUEST);
 }
  
-/** help() TODO 
- * TODO: implement help.
+/** help()
+ * TODO: write first few sections of help.
  */
 function help() {
   //echo h('strong', 'help not implemented yet.');
