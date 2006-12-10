@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.15 2006/12/06 15:16:35 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.16 2006/12/06 18:49:58 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -91,7 +91,7 @@ function navbar_search() {
 function navbar_index() {
   global $uniq_fields;
   if (!isset($uniq_fields)) $uniq_fields = sql_uniq(NULL);
-  sort($uniq_fields);
+  natcasesort($uniq_fields);
   return h_form(h_hidden('fn', 'index'),
 		h_select('field', $uniq_fields, 'Index', 'submit()'));
 		
@@ -101,7 +101,7 @@ function navbar_new() {
   global $entry_types, $sql_priv;
   if (!isset($sql_priv['INSERT'])) return;
   $uniq_types = array_keys($entry_types);
-  sort($uniq_types);
+  natcasesort($uniq_types);
   array_unshift($uniq_types, 'Import BibTeX');
   return h_form(h_hidden('fn', 'new_entry'),
 		h_select('type', $uniq_types, 'New', 'submit()'));
@@ -163,7 +163,7 @@ function selection_form($select, $title) {
     echo h_a('Delete', 'javascript:confirmDelete()')."\n&nbsp;\n";
   if (isset($sql_priv['INSERT']) or isset($sql_priv['DELETE'])) {
     $uniq_keywords = sql_uniq('keywords');
-    sort($uniq_keywords);
+    natcasesort($uniq_keywords);
     echo h_select('keyword', $uniq_keywords, 'Keyword');
     if (isset($sql_priv['INSERT']))
       echo h_a('Addkey', 'javascript:keyword("addkey")')."\n";
@@ -174,7 +174,7 @@ function selection_form($select, $title) {
 
   echo h_start('p');
   $ordered = array_map("select_sort_field", $select);
-  asort($ordered);
+  natcasesort($ordered);
   $n = 0;
   foreach ($ordered as $entryid => $ignore) 
     print_entry($select[$entryid], $entryid, ++$n);
@@ -245,6 +245,7 @@ function get_selection() {
  * Request: fn=bibtex&nselect=3&keyword=&e1=3722&e2=3714&e3=3553
  * TODO: implement bibtex format output.
  * TODO: implement export all.
+ * TODO: file save as does not work.
  */
 function bibtex($ids = NULL) {
   if (!$ids) $ids = get_selection();
@@ -470,6 +471,7 @@ function new_entry() {
 }
  
 /** edit_entry() modifies an existing entry.
+ * TODO: go back to previous page like delete, after edit complete.
  */
 function edit_entry() {
   global $_id;
