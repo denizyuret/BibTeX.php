@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.18 2006/12/10 12:02:47 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.19 2006/12/11 10:39:44 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -143,7 +143,7 @@ function navbar_help() {
  * title is the title of the page
  */
 function selection_form($select, $title) {
-  global $sql_priv;
+  global $sql_priv, $_sort;
   $nselect = count($select);
   if ($nselect == 0) {
     echo h('p', h('strong', $title));
@@ -179,6 +179,7 @@ function selection_form($select, $title) {
   echo h_start('p');
   $ordered = array_map("select_sort_field", $select);
   natcasesort($ordered);
+  if ($_sort = 'year') $ordered = array_reverse($ordered, TRUE);
   $n = 0;
   foreach ($ordered as $entryid => $ignore) 
     print_entry($select[$entryid], $entryid, ++$n);
@@ -187,14 +188,14 @@ function selection_form($select, $title) {
 }
  
 function select_sort_field(&$entry) {
-  global $_sort;
+  global $_sort, $_field;
   if ($_sort) $key = $_sort;
+  elseif (isset($_field) and $_field == 'author') $key = 'year';
   else $key = 'author';
   $ans = isset($entry[$key]) ? $entry[$key] : NULL;
   if (!isset($ans) and $key == 'author')
     $ans = $entry['editor'];
   if (is_array($ans)) $ans = $ans[0];
-  if (isset($ans) and ($key == 'year')) $ans = -$ans;
   return $ans;
 }
  
@@ -823,7 +824,8 @@ function print_field($field, $value, $txt=NULL) {
     }
   } else {
     if (!isset($txt)) $txt = $value;
-    $txt = htmlspecialchars($txt);
+    //$txt = htmlspecialchars($txt);
+    $txt = latex2html($txt);
     echo h_get($txt, 
 	       array('fn' => 'select', 
 		     'field' => $field, 
@@ -832,6 +834,152 @@ function print_field($field, $value, $txt=NULL) {
   }
 }
  
+/* latex2html($txt) converts latex sequences to html entities in txt.
+ * htmlspecialchars: only ampersand, double and (optionally) single quotes,
+ * < and > characters.
+ */
+function latex2html($txt) {
+  $txt = str_replace('&', '&amp;', $txt);
+  $txt = str_replace('\\&amp;', '&amp;', $txt);
+  $txt = str_replace('!`', '&iexcl', $txt);
+  $txt = str_replace('<', '&iexcl', $txt);
+  $txt = str_replace('?`', '&iquest', $txt);
+  $txt = str_replace('>', '&iquest', $txt);
+  $txt = preg_replace('/{?\\\\([#$%&_{}])}?/', '$1', $txt);
+  $txt = preg_replace_callback('/{?(\\\\(\w+))}?/', 'latex2html_callback', $txt);
+  $txt = preg_replace_callback('/{?(\\\\.{?.}?)}?/', 'latex2html_callback', $txt);
+  $txt = str_replace('"', '&quot;', $txt);
+  return $txt;
+}
+
+function latex2html_callback($m) {
+  global $latex2html;
+  $str = $m[1];
+  if (isset($latex2html[$str])) return $latex2html[$str];
+  $str = str_replace('{', '', $str);
+  $str = str_replace('}', '', $str);
+  if (isset($latex2html[$str])) return $latex2html[$str];
+  return $m[0];
+}
+
+$latex2html = array
+(
+# Seven latex symbols
+ '\#' => '#',
+ '\$' => '$',
+ '\%' => '%',
+ '\&' => '&amp;',
+ '\_' => '_',
+ '\{' => '&#x7B;',
+ '\}' => '&#x7D;',
+
+# Latin-1 characters 160-255
+# '' => '&nbsp;',		// 160
+ '!`' => '&iexcl;',  '<' => '&iexcl;',
+# '' => '&cent;',
+ '\pounds' => '&pound',
+# '' => '&curren;',
+# '' => '&yen;',
+# '' => '&brvbar;',
+ '\S' => '&sect;',
+# '' => '&uml;',
+ '\copyright' => '&copy;',
+# '' => '&ordf;',		// 170
+# '' => '&laquo;',
+# '' => '&not;',
+# '' => '&shy;',
+# '' => '&reg;',
+# '' => '&macr;',
+# '' => '&deg;',
+# '' => '&plusmn;',
+# '' => '&sup2;',
+# '' => '&sup3;',
+# '' => '&acute;',		// 180
+# '' => '&micro;',
+ '\P' => '&para;',
+# '' => '&middot;',
+# '' => '&cedil;',
+# '' => '&sup1;',
+# '' => '&ordm;',
+# '' => '&raquo;',
+# '' => '&frac14;',
+# '' => '&frac12;',
+# '' => '&frac34;',		// 190
+ '?`' => '&iquest;', '>' => '&iquest;',
+ '\`A' => '&Agrave;',
+ "\'A" => '&Aacute;',
+ '\^A' => '&Acirc;',
+ '\~A' => '&Atilde;',
+ '\"A' => '&Auml;',
+ '\AA' => '&Aring;',
+ '\AE' => '&AElig;',
+ '\c{C}' => '&Ccedil;',
+ '\`E' => '&Egrave;',		// 200
+ "\'E" => '&Eacute;',
+ '\^E' => '&Ecirc;',
+ '\"E' => '&Euml;',
+ '\`I' => '&Igrave;',
+ "\'I" => '&Iacute;',
+ '\^I' => '&Icirc;',
+ '\"I' => '&Iuml;',
+# '' => '&ETH;',
+ '\~N' => '&Ntilde;',
+ '\`O' => '&Ograve;',		// 210
+ "\'O" => '&Oacute;',
+ '\^O' => '&Ocirc;',
+ '\~O' => '&Otilde;',
+ '\"O' => '&Ouml;',
+# '' => '&times;',
+ '\O' => '&Oslash;',
+ '\`U' => '&Ugrave;',
+ "\'U" => '&Uacute;',
+ '\^U' => '&Ucirc;',
+ '\"U' => '&Uuml;',		// 220
+ "\'Y" => '&Yacute;',
+# '' => '&THORN;',
+ '\ss' => '&szlig;',
+ '\`a' => '&agrave;',
+ "\'a" => '&aacute;',
+ '\^a' => '&acirc;',
+ '\~a' => '&atilde;',
+ '\"a' => '&auml;',
+ '\aa' => '&aring;',
+ '\ae' => '&aelig;',		// 230
+ '\c{c}' => '&ccedil;',
+ '\`e' => '&egrave;',
+ "\'e" => '&eacute;',
+ '\^e' => '&ecirc;',
+ '\"e' => '&euml;',
+ '\`i' => '&igrave;',
+ "\'i" => '&iacute;',
+ '\^i' => '&icirc;',
+ '\"i' => '&iuml;',
+# '' => '&eth;',		// 240
+ '\~n' => '&ntilde;',
+ '\`o' => '&ograve;',
+ "\'o" => '&oacute;',
+ '\^o' => '&ocirc;',
+ '\~o' => '&otilde;',
+ '\"o' => '&ouml;',
+# '' => '&divide;',
+ '\o' => '&oslash;',
+ '\`u' => '&ugrave;',
+ "\'u" => '&uacute;',		// 250
+ '\^u' => '&ucirc;',
+ '\"u' => '&uuml;',
+ "\'y" => '&yacute;',
+# '' => '&thorn;',
+ '\"y' => '&yuml;',
+
+# Latin-5 characters
+ '\u{G}' => '&#x011E;',
+ '\u{g}' => '&#x011F;',
+ '\.I'   => '&#x0130;',
+ '\i'    => '&#x0131;',
+ '\c{S}' => '&#x015E;',
+ '\c{s}' => '&#x015F;',
+);
+
 /** html functions */
 
 /* h() creates an html element string. 
