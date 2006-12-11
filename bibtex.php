@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.17 2006/12/10 11:30:58 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.18 2006/12/10 12:02:47 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -9,13 +9,17 @@ define('rcsid', '$Id: bibtex.php,v 1.17 2006/12/10 11:30:58 dyuret Exp dyuret $'
  * just sends the login information to mysql.  Here is the scheme
  * I use for privileges:
  *
- * GRANT ALL PRIVILEGES ON bibtex.bibtex TO root@localhost;
+ * GRANT SELECT ON bibtex.bibtex TO bibtex@localhost;
  * GRANT SELECT, INSERT ON bibtex.bibtex TO user@localhost;
- * GRANT SELECT ON bibtex.bibtex TO ''@localhost;
+ * SET PASSWORD FOR user@localhost = OLD_PASSWORD('abcdef');
+ * GRANT ALL PRIVILEGES ON bibtex.bibtex TO root@localhost;
  *
- * That way only root can alter or delete entries, 
- * regular users can select and insert
- * anonymous user can only select.
+ * That way only root can alter or delete entries, regular users can
+ * select and insert anonymous user (bibtex) can only select.  The SET
+ * PASSWORD command needs to use the OLD_PASSWORD function because of an
+ * incompatibility between php and mysql.
+ *
+ * TODO: find the right way to deal with OLD_PASSWORD incompatibility.
  *
  * The following array should have the login information for the anonymous user:
  */
@@ -23,9 +27,9 @@ $mysql = array
 (
  'db'    => 'bibtex',
  'table' => 'bibtex',
- 'user'  => '',
+ 'user'  => 'bibtex',
  'host'  => 'localhost',
- 'pass'  => '',
+ 'pass'  => 'bibtex',
  );
  
 /** main($_fn) generates top level page structure. 
@@ -274,6 +278,8 @@ function delete($ids = NULL) {
  * Request: fn=addkey&nselect=3&keyword=AI&e1=419&e2=561&e3=903
  * TODO: do google style single list for add/del keyword.
  * TODO: add a new keyword without having to edit an entry first.
+ * TODO: forget google, just have a popup that asks for the keyword.
+ * too impractical when too many keywords.
  */
 function addkey($ids = NULL) {
   global $_keyword;
