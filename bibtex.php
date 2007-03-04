@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.20 2006/12/11 17:17:37 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.21 2007/03/04 14:33:57 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -808,11 +808,18 @@ function print_title_field(&$entry, $field, $value) {
 }
 
 function print_url_field(&$entry, $field, $value) {
+  /* if there was a single url, it was output with the title */
   if (!is_array($value)) return;
   for ($i = 1; $i < count($value); $i++) {
-    $attr['href'] = htmlspecialchars($value[$i]);
+    $url = $value[$i];
+    $attr['href'] = htmlspecialchars($url);
     $attr['class'] = 'url';
-    echo ' '.h('a', $attr, 'url');
+    $text = 'url';
+    if (preg_match('/\.pdf$/i', $url)) { $text = 'pdf'; }
+    elseif (preg_match('/\.ps(\.gz)?$/i', $url)) { $text = 'ps'; }
+    elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
+    elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
+    echo ' '.h('a', $attr, $text);
   }
 }
 
