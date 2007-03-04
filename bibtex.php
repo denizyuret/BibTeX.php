@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.19 2006/12/11 10:39:44 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.20 2006/12/11 17:17:37 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -137,7 +137,7 @@ function navbar_login() {
 function navbar_help() {
   return h_help('Help');
 }
-
+ 
 /** selection_form($select, $title) generates the entry selection form.
  * select is an array[entryid][field]=value(s)
  * title is the title of the page
@@ -465,7 +465,7 @@ function print_entry_field($field, $value) {
   }
   echo h('br');
 }
-
+ 
 /** new_entry($_type) creates a new entry of a given type.
  * $_type: gives the type of entry
  * if type == "Import BibTeX" then do import.
@@ -649,7 +649,7 @@ function field_equal(&$a1, &$a2) {
     return ($a1 == $a2);
   }
 }
-
+ 
 /** import() TODO
  * TODO. implement import
  */
@@ -834,7 +834,7 @@ function print_field($field, $value, $txt=NULL) {
   }
 }
  
-/* latex2html($txt) converts latex sequences to html entities in txt.
+/** latex2html($txt) converts latex sequences to html entities in txt.
  * htmlspecialchars: only ampersand, double and (optionally) single quotes,
  * < and > characters.
  */
@@ -971,15 +971,17 @@ $latex2html = array
 # '' => '&thorn;',
  '\"y' => '&yuml;',
 
-# Latin-5 characters
+# Selected Latin Extended A
  '\u{G}' => '&#x011E;',
  '\u{g}' => '&#x011F;',
  '\.I'   => '&#x0130;',
  '\i'    => '&#x0131;',
  '\c{S}' => '&#x015E;',
  '\c{s}' => '&#x015F;',
+ '\v{C}' => '&#x010C;',
+ '\v{c}' => '&#x010D;',
 );
-
+ 
 /** html functions */
 
 /* h() creates an html element string. 
@@ -1122,7 +1124,7 @@ function h_help($txt, $section = NULL) {
     return h_a($txt, "$_SERVER[PHP_SELF]?fn=help#$section");
   else return h_a($txt, "$_SERVER[PHP_SELF]?fn=help");
 } 
-
+ 
 /** sql functions 
  * TODO: check each sql statement for sql injection
  */
@@ -1386,7 +1388,7 @@ $entry_types = array
   'optional' => array('month', 'year'))
  );
  
-/** html_header, html_help, html_footer */
+/** html_header, html_footer */
 
 $html_header = '<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html 
@@ -1505,6 +1507,15 @@ a { vertical-align:top }
 </head>
 <body>
 ';
+ 
+$html_footer = '<p class="rcsid">'.rcsid. 
+'&nbsp;&nbsp; <a href="?fn=download">download</a> </p>
+</body>
+</html>
+';
+
+ 
+/** html_help */
 
 $html_help = '
 <h3><a name="entryformat">Entry Format</a></h3>
@@ -2163,12 +2174,6 @@ last four nonpunctuation characters are numerals, such as "(about
 
 <p>CTAN, the <i>Comprehensive TeX Archive Network</i>, URL
  <a href="http://www.ctan.org/">http://www.ctan.org/</a>.</p>
-';
-
-$html_footer = '<p class="rcsid">'.rcsid. 
-'&nbsp;&nbsp; <a href="?fn=download">download</a> </p>
-</body>
-</html>
 ';
 
 main();
