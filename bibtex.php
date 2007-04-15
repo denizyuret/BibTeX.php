@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.21 2007/03/04 14:33:57 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.22 2007/03/04 14:47:58 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -179,7 +179,7 @@ function selection_form($select, $title) {
   echo h_start('p');
   $ordered = array_map("select_sort_field", $select);
   natcasesort($ordered);
-  if ($_sort = 'year') $ordered = array_reverse($ordered, TRUE);
+  if ($_sort == 'year') $ordered = array_reverse($ordered, TRUE);
   $n = 0;
   foreach ($ordered as $entryid => $ignore) 
     print_entry($select[$entryid], $entryid, ++$n);
@@ -248,19 +248,35 @@ function get_selection() {
  
 /** bibtex($ids) TODO exports selected entries to bibtex format.
  * Request: fn=bibtex&nselect=3&keyword=&e1=3722&e2=3714&e3=3553
- * TODO: implement bibtex format output.
  * TODO: implement export all.
  * TODO: file save as does not work.
+ * BUG: The quotes in values are not escaped.
+ * BUG: Only lowercase versions of the fields are expected.
  */
 function bibtex($ids = NULL) {
   if (!$ids) $ids = get_selection();
   if (!$ids) return;
   header('Content-type: text/plain');
-  echo "BibTeX not implemented yet, here are the entries you selected:\n\n";
+  //echo "BibTeX not implemented yet, here are the entries you selected:\n\n";
   //print_r($_REQUEST);
   $entries = sql_select_list($ids);
   foreach ($entries as $entry) {
-    print_r($entry);
+    printf("@%s{%s,\n", $entry['entrytype'], $entry['citekey']);
+    foreach ($entry as $key => $val) {
+      if ($key == 'entrytype') { continue; }
+      if ($key == 'citekey') { continue; }
+      if (is_array($val)) {
+	if (($key == 'author') || ($key == 'editor')) {
+	  $valstr = implode(" and ", $val);
+	} else {
+	  $valstr = implode(",", $val);
+	}
+	printf("    %s = \"%s\",\n", $key, $valstr);
+      } else {
+	printf("    %s = \"%s\",\n", $key, $val);
+      }
+    }
+    printf("}\n\n");
   }
 }
  
@@ -791,6 +807,7 @@ function print_author_field(&$entry, $field, $value) {
 
 function print_title_field(&$entry, $field, $value) {
   $type = $entry['entrytype'];
+  $value = latex2html($value);
   if (in_array($type, array('book', 'inbook', 'manual', 'proceedings', 'phdthesis')))
     $txt = "<i>$value</i>";
   else $txt = $value;
@@ -800,7 +817,7 @@ function print_title_field(&$entry, $field, $value) {
     echo h_a($txt, $url);
   } else {
     $author = isset($entry['author']) ? $entry['author'] :
-      (isset($entry['editor']) ? $entry['editor'] : 'foo');
+      (isset($entry['editor']) ? $entry['editor'] : '');
     if (is_array($author)) $author = $author[0];
     $url = 'http://www.google.com/search?q='.urlencode("\"$value\" $author");
     echo h_a($txt, $url, array('class' => 'google'));
@@ -844,6 +861,7 @@ function print_field($field, $value, $txt=NULL) {
 /** latex2html($txt) converts latex sequences to html entities in txt.
  * htmlspecialchars: only ampersand, double and (optionally) single quotes,
  * < and > characters.
+ * BUG: It does not get rid of {} characters.
  */
 function latex2html($txt) {
   $txt = str_replace('&', '&amp;', $txt);
@@ -853,6 +871,7 @@ function latex2html($txt) {
   $txt = str_replace('?`', '&iquest', $txt);
   $txt = str_replace('>', '&iquest', $txt);
   $txt = preg_replace('/{?\\\\([#$%&_{}])}?/', '$1', $txt);
+  $txt = preg_replace('/{(\w+)}/', '$1', $txt);
   $txt = preg_replace_callback('/{?(\\\\(\w+))}?/', 'latex2html_callback', $txt);
   $txt = preg_replace_callback('/{?(\\\\.{?.}?)}?/', 'latex2html_callback', $txt);
   $txt = str_replace('"', '&quot;', $txt);
