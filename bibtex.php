@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.22 2007/03/04 14:47:58 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.23 2007/04/15 13:59:03 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -179,7 +179,7 @@ function selection_form($select, $title) {
   echo h_start('p');
   $ordered = array_map("select_sort_field", $select);
   natcasesort($ordered);
-  if ($_sort == 'year') $ordered = array_reverse($ordered, TRUE);
+  // if ($_sort == 'year') $ordered = array_reverse($ordered, TRUE);
   $n = 0;
   foreach ($ordered as $entryid => $ignore) 
     print_entry($select[$entryid], $entryid, ++$n);
@@ -196,7 +196,23 @@ function select_sort_field(&$entry) {
   if (!isset($ans) and $key == 'author')
     $ans = $entry['editor'];
   if (is_array($ans)) $ans = $ans[0];
+  if ($key == 'year') { 
+    // Add the month for sorting
+    $m = (isset($entry['month'])) ? monthno($entry['month']) : 0;
+    $ans = 100*$ans + $m;
+    // Reverse sorting so newer appears at top
+    $ans = 1000000 - $ans;
+  }
   return $ans;
+}
+
+function monthno($str) {
+  $mon = array('jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+	      'jul', 'aug', 'sep', 'oct', 'nov', 'dec');
+  $str = substr(strtolower($str), 0, 3);
+  $key = array_search($str, $mon);
+  $key = $key ? ($key + 1) : 0;
+  return $key;
 }
  
 /** search($_pattern) generates result of a search request. 
@@ -871,10 +887,10 @@ function latex2html($txt) {
   $txt = str_replace('?`', '&iquest', $txt);
   $txt = str_replace('>', '&iquest', $txt);
   $txt = preg_replace('/{?\\\\([#$%&_{}])}?/', '$1', $txt);
-  $txt = preg_replace('/{(\w+)}/', '$1', $txt);
   $txt = preg_replace_callback('/{?(\\\\(\w+))}?/', 'latex2html_callback', $txt);
   $txt = preg_replace_callback('/{?(\\\\.{?.}?)}?/', 'latex2html_callback', $txt);
   $txt = str_replace('"', '&quot;', $txt);
+  $txt = preg_replace('/{(\w+)}/', '$1', $txt);
   return $txt;
 }
 
@@ -1006,6 +1022,11 @@ $latex2html = array
  '\c{s}' => '&#x015F;',
  '\v{C}' => '&#x010C;',
  '\v{c}' => '&#x010D;',
+
+# Other
+ '\texttrademark' => '&trade;',
+ '\textregistered' => '&reg;',
+
 );
  
 /** html functions */
