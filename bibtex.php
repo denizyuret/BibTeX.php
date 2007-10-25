@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.23 2007/04/15 13:59:03 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.24 2007/05/11 06:48:51 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -190,8 +190,9 @@ function selection_form($select, $title) {
 function select_sort_field(&$entry) {
   global $_sort, $_field;
   if ($_sort) $key = $_sort;
-  elseif (isset($_field) and $_field == 'author') $key = 'year';
-  else $key = 'author';
+  # elseif (isset($_field) and $_field == 'author') $key = 'year';
+  # else $key = 'author';
+  else $key = 'year';
   $ans = isset($entry[$key]) ? $entry[$key] : NULL;
   if (!isset($ans) and $key == 'author')
     $ans = $entry['editor'];
