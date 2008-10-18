@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.26 2008/10/18 09:53:25 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.27 2008/10/18 09:57:30 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1353,7 +1353,37 @@ function sql_delete_entry($entryid) {
   sql_delete_list($ids);
 }
 
-function sql_search($value) {
+function sql_search($string) {
+  global $mysql;
+  if (!isset($string)) return;
+  $table = $mysql['table'];
+  $ids = NULL;
+  foreach (explode(" ", $string) as $value) {
+    $query = "SELECT entryid FROM $table WHERE value LIKE '%$value%'";
+    $result = sql_query($query);
+    $newids = array();
+    if (!isset($ids)) {
+      while ($row = mysql_fetch_row($result))
+	$ids[$row[0]] = 1;
+    } else {
+      while ($row = mysql_fetch_row($result)) {
+	$id = $row[0];
+	if (isset($ids[$id])) {
+	  $newids[$id] = 1;
+	}
+      }
+      $ids = $newids;
+    }
+    mysql_free_result($result);
+    if (empty($ids)) {
+      break;
+    }
+  }
+  if (empty($ids)) return;
+  return sql_select_list(array_keys($ids));
+}
+
+function sql_search1($value) {	// deprecated
   global $mysql;
   if (!isset($value)) return;
   $table = $mysql['table'];
