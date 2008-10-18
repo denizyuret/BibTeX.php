@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.25 2007/10/25 08:45:32 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.26 2008/10/18 09:53:25 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -965,7 +965,7 @@ function latex2html($txt) {
   $txt = preg_replace_callback('/{?(\\\\(\w+))}?/', 'latex2html_callback', $txt);
   $txt = preg_replace_callback('/{?(\\\\.{?.}?)}?/', 'latex2html_callback', $txt);
   $txt = str_replace('"', '&quot;', $txt);
-  $txt = preg_replace('/{(\w+)}/', '$1', $txt);
+  $txt = preg_replace('/{([^{}]+)}/', '$1', $txt);
   return $txt;
 }
 
