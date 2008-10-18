@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.24 2007/05/11 06:48:51 dyuret Exp dyuret $');
+define('rcsid', '$Id: bibtex.php,v 1.25 2007/10/25 08:45:32 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -396,7 +396,7 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
   global $entry_types, $extra_index_fields, $extra_urlkey_fields, $extra_textarea_fields,
     $entry_field_index, $entry_field_printed;
   if (!isset($entry)) return;
-  $type = $entry['entrytype'];
+  $type = strtolower($entry['entrytype']);
   if (!$type) return;
   $fields = $entry_types[$type];
   if (!$fields) return;
@@ -433,8 +433,8 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
   foreach ($extra_textarea_fields as $f)
     entry_field($entry, $f);
   echo h_hidden('nfield', $entry_field_index);
-  h_end('p');
-  h_end('form');
+  echo h_end('p');
+  echo h_end('form');
 }
 
 /* entry_field()
@@ -505,7 +505,7 @@ function print_entry_field($field, $value) {
  */
 function new_entry() {
   global $_type;
-  if ($_type == 'Import BibTeX') return import();
+  if ($_type == 'Import BibTeX') return import_form();
   $entry = array('entrytype' => $_type);
   entry_form($entry, 'New entry');
 }
@@ -554,7 +554,7 @@ submit with the "Don\'t check errors" button.');
 function entry_errors(&$entry, $editid) {
   global $entry_types, $extra_fields;
   $err = array();
-  $type = isset($entry['entrytype']) ? $entry['entrytype'] : NULL;
+  $type = isset($entry['entrytype']) ? strtolower($entry['entrytype']) : NULL;
   if (!$type) $err[] = 'entrytype: not set. '.h_help('?', 'entrytype');
   $fields = isset($entry_types[$type]) ? $entry_types[$type] : NULL;
   if (!$fields) $err[] = $type . ': not a valid entrytype. '.
@@ -683,12 +683,86 @@ function field_equal(&$a1, &$a2) {
   }
 }
  
-/** import() TODO
- * TODO. implement import
+/** import()
  */
 function import() {
-  echo h('strong', 'import not implemented yet.');
-  print_r($_REQUEST);
+  global $array_fields;
+  $entries = array();
+  $errors = '';
+  $fields = array();
+  $citekeys = array();
+  $nline = 0;
+  foreach(explode("\n", $_REQUEST["text"]) as $line) {
+    $nline++;
+    $line = trim($line);
+    if ($line == '') {
+      continue;
+    } elseif ($line == '}') {
+      $entries[] = $fields;
+      $errors .= implode("\n", entry_errors($fields));
+      $fields = array();
+    } elseif (preg_match('/^@(\S+?)\s*{\s*(\S+)\s*,$/', $line, $m)) {
+      $type = strtolower($m[1]); $key = $m[2];
+      if (isset($fields['entrytype'])) {
+	$errors .= "$nline: Duplicate header: [$line]\n";
+      }
+      if (isset($citekeys[$key])) {
+	$errors .= "$nline: Duplicate citekey: [$line]\n";
+      }
+      $citekeys[$key] = 1;
+      $fields['entrytype'] = trim($type);
+      $fields['citekey'] = trim($key);
+    } elseif (preg_match('/^(\S+?)\s*=\s*[{"](.+)[}"]\s*,?$/', $line, $m)) {
+      $key = strtolower(trim($m[1])); $val = trim($m[2]);
+      if (isset($fields[$key])) {
+	$errors .= "$nline: Duplicate $key: [$line]\n";
+      }
+      if (isset($array_fields[$key])) {
+	  $vals = explode($array_fields[$key], $val);
+	  if (count($vals) > 1) {
+	    for ($i = 0; $i < count($vals); $i++) {
+	      $vals[$i] = trim($vals[$i]);
+	    }
+	    $fields[$key] = $vals;
+	  } else {
+	    $fields[$key] = $val;
+	  }
+      } else {
+	$fields[$key] = trim($m[2]);
+      }
+    } else {
+      $errors .= "$nline: Bad line: [$line]\n";
+    }
+  }
+  if (count($fields) > 0) {
+    $entries[] = $fields;
+    $errors .= implode("\n", entry_errors($fields));
+  }
+  if ($errors) {
+    echo h('p', h('strong', 'Import errors'));
+    echo "<pre>\n$errors\nEntry:\n";
+    echo $_REQUEST["text"];
+    echo "\n</pre>\n";
+  } else {
+    foreach ($entries as $e) {
+      entry($e);
+    }
+  }
+}
+
+function import_form() {
+  echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
+			     'name' => 'import_form',
+			     'method' => 'post'));
+  echo h('p',
+	 h('strong', 'Import BibTeX').' &nbsp; '.
+	 h_hidden('fn', 'import').
+	 h_submit('Submit').
+	 h_button('Cancel', 'window.back()').
+	 h_submit('Don\'t check errors', 'nocheck')
+	 );
+  echo h_textarea('text', '', 20, 60);
+  echo h_end('form');
 }
  
 /** help()
@@ -1380,6 +1454,7 @@ $extra_optional_fields = array('key', 'crossref', 'annote');
 $extra_textarea_fields = array('abstract', 'annote');
 $extra_urlkey_fields = array('url', 'keywords');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
+$array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
 
 $entry_types = array
 (
