@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', '$Id: bibtex.php,v 1.27 2008/10/18 09:57:30 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.28 2008/10/18 11:50:10 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -695,13 +695,15 @@ function import() {
   foreach(explode("\n", $_REQUEST["text"]) as $line) {
     $nline++;
     $line = trim($line);
+    $line = preg_replace('/=\s*\\\\"/', '="', $line);
+    $line = preg_replace('/\\\\"\s*,/', '",', $line);
     if ($line == '') {
       continue;
     } elseif ($line == '}') {
       $entries[] = $fields;
-      $errors .= implode("\n", entry_errors($fields));
+      $errors .= implode("\n", entry_errors($fields,-1));
       $fields = array();
-    } elseif (preg_match('/^@(\S+?)\s*{\s*(\S+)\s*,$/', $line, $m)) {
+    } elseif (preg_match('/^\s*@(\S+?)\s*{\s*(\S+)\s*,\s*$/', $line, $m)) {
       $type = strtolower($m[1]); $key = $m[2];
       if (isset($fields['entrytype'])) {
 	$errors .= "$nline: Duplicate header: [$line]\n";
@@ -712,7 +714,7 @@ function import() {
       $citekeys[$key] = 1;
       $fields['entrytype'] = trim($type);
       $fields['citekey'] = trim($key);
-    } elseif (preg_match('/^(\S+?)\s*=\s*[{"](.+)[}"]\s*,?$/', $line, $m)) {
+    } elseif (preg_match('/^\s*(\S+?)\s*=\s*[{"](.+)["}]\s*,?\s*$/', $line, $m)) {
       $key = strtolower(trim($m[1])); $val = trim($m[2]);
       if (isset($fields[$key])) {
 	$errors .= "$nline: Duplicate $key: [$line]\n";
@@ -736,7 +738,7 @@ function import() {
   }
   if (count($fields) > 0) {
     $entries[] = $fields;
-    $errors .= implode("\n", entry_errors($fields));
+    $errors .= implode("\n", entry_errors($fields,-1));
   }
   if ($errors) {
     echo h('p', h('strong', 'Import errors'));
