@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.28 2008/10/18 11:50:10 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.29 2009/03/07 17:31:59 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -204,7 +204,19 @@ function select_sort_field(&$entry) {
     // Reverse sorting so newer appears at top
     $ans = 1000000 - $ans;
   }
+  if ($key == 'author' || key == 'editor') {
+    $ans = find_last_name($ans);
+  }
   return $ans;
+}
+
+function find_last_name($str) {
+  if (!preg_match('/,/', $str)) {
+    if (preg_match('/\s(\S+)$/', $str, $m)) {
+      $str = $m[1];
+    }
+  }
+  return $str;
 }
 
 function monthno($str) {
@@ -606,7 +618,10 @@ function get_fields() {
 	isset($_REQUEST["v$i"]) and
 	($_REQUEST["f$i"] != '') and
 	($_REQUEST["v$i"] != '')) {
-      array_set_values($fields, $_REQUEST["f$i"], $_REQUEST["v$i"]);
+      $fi = stripcslashes($_REQUEST["f$i"]);
+      $vi = stripcslashes($_REQUEST["v$i"]);
+      //echo "<pre>get_fields: [$fi][$vi]</pre>\n";
+      array_set_values($fields, $fi, $vi);
     }
   }
   return $fields;
@@ -1126,6 +1141,7 @@ function h($name, $attr=NULL, $content=NULL) {
   if (isset($attr)) {
     foreach ($attr as $aname => $value) {
       $esc = htmlspecialchars($value);
+      //$esc = $value;
       $vals .= " $aname=\"$esc\"";
     }
   }
@@ -1433,7 +1449,9 @@ function sql_insert_field($id, $field, $value) {
   $table = $mysql['table'];
   $id = mysql_real_escape_string($id);
   $field = mysql_real_escape_string($field);
+  //echo "<pre>Before escape:[$value]</pre>";
   $value = mysql_real_escape_string($value);
+  //echo "<pre>After escape:[$value]</pre>";
   sql_query("INSERT INTO $table (entryid, field, value, user) VALUES ('$id', '$field', '$value', CURRENT_USER)");
 }
 
@@ -1484,7 +1502,7 @@ function sql_newid() {
 $extra_index_fields = array('entrytype', 'citekey');
 $extra_optional_fields = array('key', 'crossref', 'annote');
 $extra_textarea_fields = array('abstract', 'annote');
-$extra_urlkey_fields = array('url', 'keywords');
+$extra_urlkey_fields = array('url', 'keywords', 'doi');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 $array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
 
@@ -1492,7 +1510,7 @@ $entry_types = array
 (
  'article' => array
  ('required' => array('author', 'title', 'journal', 'year'),
-  'optional' => array('volume', 'number', 'pages', 'month', 'note')),
+  'optional' => array('volume', 'number', 'pages', 'month', 'note', 'publisher')),
 
  'book' => array
  ('required' => array(array('author', 'editor'), 'title', 'publisher', 'year'), 
