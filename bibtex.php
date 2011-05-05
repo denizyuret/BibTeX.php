@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.30 2009/09/15 06:01:11 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.31 2011/05/05 19:43:09 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -438,7 +438,7 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
   foreach ($fields['optional'] as $f)
     entry_field($entry, $f);
   foreach ($entry as $f => $v)
-    if (!$entry_field_printed[$f])
+    if (!$entry_field_printed[$f] && !in_array($f, $extra_textarea_fields))
       entry_field($entry, $f);
   for ($i = 1; $i <= 3; $i++)
     entry_field($entry, NULL);
@@ -1503,14 +1503,14 @@ function sql_newid() {
 /** entry_types is the official specification for bibtex.  
  * In addition to these fields we have fields that are required for
  * every type: entrytype and citekey.  We have extra optional fields
- * key, crossref and annote.  We also two extra fields: url and
- * keywords, not specified in bibtex standard.  Finally the program
+ * key, crossref and annote.  We also added extra fields: url,
+ * keywords, doi, abstract: not specified in bibtex standard.  Finally the program
  * will accept any new field typed by the user.
  */
 $extra_index_fields = array('entrytype', 'citekey');
-$extra_optional_fields = array('key', 'crossref', 'annote');
+$extra_urlkey_fields = array('url', 'keywords');
+$extra_optional_fields = array('key', 'crossref', 'doi');
 $extra_textarea_fields = array('abstract', 'annote');
-$extra_urlkey_fields = array('url', 'keywords', 'doi');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 $array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
 
