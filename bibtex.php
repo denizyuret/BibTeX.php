@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.31 2011/05/05 19:43:09 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.32 2011/05/05 21:52:36 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1528,6 +1528,10 @@ $entry_types = array
  ('required' => array('title'), 
   'optional' => array('author', 'howpublished', 'address', 'month', 'year', 'note')),
  
+ 'conference' => array
+ ('required' => array('author', 'title', 'booktitle', 'year'), 
+  'optional' => array('editor', array('volume', 'number'), 'series', 'pages', 'address', 'month', 'organization', 'publisher', 'note')),
+
  'inbook' => array
  ('required' => array(array('author', 'editor'), 'title', array('chapter', 'pages'), 'publisher', 'year'), 
   'optional' => array(array('volume', 'number'), 'series', 'type', 'address', 'edition', 'month', 'note')),
