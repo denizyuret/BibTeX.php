@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.29 2009/03/07 17:31:59 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.30 2009/09/15 06:01:11 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -618,10 +618,18 @@ function get_fields() {
 	isset($_REQUEST["v$i"]) and
 	($_REQUEST["f$i"] != '') and
 	($_REQUEST["v$i"] != '')) {
-      $fi = stripcslashes($_REQUEST["f$i"]);
-      $vi = stripcslashes($_REQUEST["v$i"]);
+
+      // dyuret 20110505:
+      // stripcslashes is a bug here, when you edit and resubmit an
+      // entry without any changes, you lose slashes.  I don't
+      // remember why I did it this way in the first place, so I
+      // will leave this code here in case:
+      //$fi = stripcslashes($_REQUEST["f$i"]);
+      //$vi = stripcslashes($_REQUEST["v$i"]);
       //echo "<pre>get_fields: [$fi][$vi]</pre>\n";
-      array_set_values($fields, $fi, $vi);
+      //array_set_values($fields, $fi, $vi);
+
+      array_set_values($fields, $_REQUEST["f$i"], $_REQUEST["v$i"]);
     }
   }
   return $fields;
