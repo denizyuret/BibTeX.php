@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.32 2011/05/05 21:52:36 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.33 2011/05/05 21:55:24 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -300,11 +300,10 @@ function bibtex($ids = NULL) {
 	} else {
 	  $valstr = implode(",", $val);
 	}
-	printf("    %s = \"%s\",\n", $key, $valstr);
-      } else {
-	printf("    %s = \"%s\",\n", $key, $val);
+	$val = $valstr;
       }
-    }
+      printf("    %s = \"%s\",\n", $key, utf2latex($val));
+     }
     printf("}\n\n");
   }
 }
@@ -422,7 +421,7 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
 	 h_submit('Submit').
 	 h_button('Cancel', 'window.back()').
 	 h_submit('Don\'t check errors', 'nocheck').
-	 h('br').'Please enter multiple authors, editors, urls, and keywords on separate lines.'
+	 h('br').'If there are multiple authors, editors, urls, or keywords please enter them on separate lines.'
 	 );
   echo h_start('p');
   echo h('strong', 'Required fields ').h_help('?', 'required').h('br');
@@ -600,10 +599,11 @@ function entry_errors(&$entry, $editid) {
     if (!deep_in_array($f, $allfields))
       $err[] = $f . ': not a recognized field for the ' . 
 	$type . ' entrytype. ' . h_help('?', 'ignored');
-    foreach ((is_array($v) ? $v : array($v)) as $vv)
-      if (preg_match('/[^\000-\177]/', $vv))
-	$err[] = $vv . ': contains non-ascii characters. '.
-	         h_help('?', 'nonenglish');
+    // deniz 20110506: We are adding experimental support for non-ascii characters...
+    //foreach ((is_array($v) ? $v : array($v)) as $vv)
+    //if (preg_match('/[^\000-\177]/', $vv))
+    //$err[] = $vv . ': contains non-ascii characters. '.
+    //h_help('?', 'nonenglish');
   }
   // anything else illegal in bibtex specs?
   return $err;
@@ -974,6 +974,16 @@ function print_field($field, $value, $txt=NULL) {
   }
 }
  
+/** utf2latex($txt) converts utf8 characters to latex sequences.
+ * BUG: It only handles Turkish characters.
+ */
+function utf2latex($txt) {
+  $txt = str_replace(array('ç','Ç','ğ','Ğ','ı','İ','ö','Ö','ş','Ş','ü','Ü'),
+		     array('{\c{c}}','{\c{C}}','{\u{g}}','{\u{G}}','{\i}','{\.I}','{\"o}','{\"O}','{\c{s}}','{\c{S}}','{\"u}','{\"U}'),
+		     $txt);
+  return $txt;
+}
+
 /** latex2html($txt) converts latex sequences to html entities in txt.
  * htmlspecialchars: only ampersand, double and (optionally) single quotes,
  * < and > characters.
