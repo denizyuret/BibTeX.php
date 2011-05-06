@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.33 2011/05/05 21:55:24 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.34 2011/05/05 23:20:49 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -841,21 +841,36 @@ function login() {
  */
 $entry_format = array
 (
- array('author', '_. ', 'print_author_field'),
- array('editor', '_. ', 'print_author_field'),
- array('title', '_. ', 'print_title_field'),
- array('url', '_ ', 'print_url_field'),
+ array('author', '_', 'print_author_field'),
+ array('editor', '_', 'print_author_field'),
 
- array('journal', '<i>_</i>, ', NULL),
- array('booktitle', 'In <i>_</i>, ', NULL),
- array('organization', '_, ', NULL),
- array('school', '_, ', NULL),
- array('institution', '_, ', NULL),
- array('howpublished', '_, ' , NULL),
- array('publisher', '_, ', NULL),
+ array('year', '. _', NULL),
 
- array('year', '_. ', NULL),
- array('keywords', '[_] ', NULL),
+ array('title', '. _', 'print_title_field'),
+ array('url', ' [_]', 'print_url_field'),
+
+ array('journal', '. <i>_</i>', NULL),
+ array('booktitle', '. In <i>_</i>', NULL),
+
+ array('volume', ', volume _', NULL),
+ array('number', ', number _', NULL),
+ array('pages',  ', pages _', NULL),
+
+ array('address', ', _', NULL),
+ array('month', ', _', NULL),
+
+ array('school', '. _', NULL),
+ array('institution', '. _', NULL),
+ array('howpublished', '. _' , NULL),
+ array('organization', '. _', NULL),
+ array('publisher', '. _', NULL),
+
+ array('note', '. _', NULL),
+
+ array('keywords', '. [_] ', NULL),
+
+ array('abstract', '<blockquote><small><b>Abstract:</b> _ </small></blockquote>', NULL),
+ array('annote', '<blockquote><small><b>Notes:</b> _ </small></blockquote>', NULL),
 # array('entrytype', '[_:', NULL),
 # array('citekey', '_] ', NULL),
 );
@@ -952,7 +967,8 @@ function print_url_field(&$entry, $field, $value) {
     elseif (preg_match('/\.ps(\.gz)?$/i', $url)) { $text = 'ps'; }
     elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
     elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
-    echo ' '.h('a', $attr, $text);
+    if ($i > 1) { echo ' '; }
+    echo h('a', $attr, $text);
   }
 }
 
