@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.34 2011/05/05 23:20:49 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.35 2011/05/06 00:56:43 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -413,7 +413,8 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
   if (!$fields) return;
   echo h_start('form', array('action' => $_SERVER['PHP_SELF'],
 			     'name' => 'entry_form',
-			     'method' => 'post'));
+			     'method' => 'post',
+			     'enctype' => 'multipart/form-data'));
   echo h('p',
 	 ($title ? h('strong', $title).' &nbsp; ' : '').
 	 h_hidden('fn', 'entry').
@@ -444,6 +445,7 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
   foreach ($extra_textarea_fields as $f)
     entry_field($entry, $f);
   echo h_hidden('nfield', $entry_field_index);
+  echo h_file();
   echo h_end('p');
   echo h_end('form');
 }
@@ -542,7 +544,7 @@ function copy_entry() {
 /** entry($fields, $_id, $_nocheck) possibly checks and inserts an entry
  */
 function entry($fields = NULL) {
-  global $_id, $_nocheck;
+  global $_id, $_nocheck, $file_error_types;
   if (!$fields) $fields = get_fields();
   if (!$fields) return;
   $err = $_nocheck ? NULL : entry_errors($fields, $_id);
@@ -553,11 +555,29 @@ function entry($fields = NULL) {
 submit with the "Don\'t check errors" button.');
     echo "<pre>Entry: ";
     print_r($fields);
+    echo "\$_FILES: ";
+    print_r($_FILES["file"]);
+    echo "\$_REQUEST: ";
+    print_r($_REQUEST);
+    echo "\$_SERVER: ";
+    print_r($_SERVER);
     echo "</pre>\n";
   } else {
     insert($fields, $_id);
   }
 }
+
+$file_error_types = array
+  ('There is no error, the file uploaded with success.',
+   'The uploaded file exceeds the upload_max_filesize directive in php.ini.', 
+   'The uploaded file exceeds the MAX_FILE_SIZE directive that was specified in the HTML form.', 
+   'The uploaded file was only partially uploaded.', 
+   'No file was uploaded.', 
+   'Unknown error.',
+   'Missing a temporary folder.', 
+   'Failed to write file to disk.', 
+   'A PHP extension stopped the file upload.' 
+   ); 
 
 /* entry_errors
  * TODO: give more info if duplicate citekey.
@@ -599,14 +619,69 @@ function entry_errors(&$entry, $editid) {
     if (!deep_in_array($f, $allfields))
       $err[] = $f . ': not a recognized field for the ' . 
 	$type . ' entrytype. ' . h_help('?', 'ignored');
+
     // deniz 20110506: We are adding experimental support for non-ascii characters...
     //foreach ((is_array($v) ? $v : array($v)) as $vv)
     //if (preg_match('/[^\000-\177]/', $vv))
     //$err[] = $vv . ': contains non-ascii characters. '.
     //h_help('?', 'nonenglish');
   }
+
+  // deniz 20110506: We should try moving uploaded files here when we can warn on errors
+  if ($_FILES["file"]["error"] == UPLOAD_ERR_OK) {
+    $bib = $_SERVER["DOCUMENT_ROOT"] . "/bib";
+    $dir = upload_dir($entry);
+    if (!file_exists("$bib/$dir") && !mkdir("$bib/$dir", 0775, true)) {
+	$err[] = "Failed to create directory $bib/$dir";
+    } else {
+      $name = $_FILES["file"]["name"];
+      $tmp = $_FILES["file"]["tmp_name"];
+      if (!move_uploaded_file($tmp, "$bib/$dir/$name")) {
+	$err[] = "Cannot move uploaded file to $bib/$dir/$name";
+      } else {
+	$url = "/bib/$dir/" . urlencode($name);
+	if (!isset($entry['url'])) {
+	  $entry['url'] = $url;
+	} elseif (!is_array($entry['url'])) {
+	  $entry['url'] = array($entry['url'], $url);
+	} else {
+	  $entry['url'][] = $url;
+	}
+      }
+    }
+  } elseif ($_FILES["file"]["error"] != UPLOAD_ERR_NO_FILE) {
+    $err[] = $file_error_types[$_FILES["file"]["error"]];
+  } 
+
   // anything else illegal in bibtex specs?
   return $err;
+}
+
+function upload_dir($entry) {
+  $citekey = isset($entry['citekey']) ? $entry['citekey'] : 'unknown';
+  $author = 'unknown'; 
+  if (isset($entry['author'])) {
+    if (is_array($entry['author'])) {
+      $author = $entry['author'][0]; 
+    } else {
+      $author = $entry['author']; 
+    }
+    $author = str_replace('{\\i}', 'i', $author); 
+    $author = preg_replace('/\\\\./', '', $author); 
+    $author = preg_replace('/,.*/', '', $author); 
+    $author = str_replace(array('{','}'), '', $author); 
+    $author = asciify($author); 
+    $author = strtolower($author); 
+    $author = str_replace(' ', '', $author); 
+    if ($author == '') { $author = 'unknown'; } 
+  }
+  return urlencode($author) . "/" . urlencode($citekey);
+}
+
+function asciify($str) {
+  static $from = array( 'Á', 'À', 'Â', 'Ä', 'Ǎ', 'Ă', 'Ā', 'Ã', 'Å', 'Ǻ', 'Ą', 'Ɓ', 'Ć', 'Ċ', 'Ĉ', 'Č', 'Ç', 'Ď', 'Ḍ', 'Ɗ', 'É', 'È', 'Ė', 'Ê', 'Ë', 'Ě', 'Ĕ', 'Ē', 'Ę', 'Ẹ', 'Ǝ', 'Ə', 'Ɛ', 'Ġ', 'Ĝ', 'Ǧ', 'Ğ', 'Ģ', 'Ɣ', 'Ĥ', 'Ḥ', 'Ħ', 'I', 'Í', 'Ì', 'İ', 'Î', 'Ï', 'Ǐ', 'Ĭ', 'Ī', 'Ĩ', 'Į', 'Ị', 'Ĵ', 'Ķ', 'Ƙ', 'Ĺ', 'Ļ', 'Ł', 'Ľ', 'Ŀ', 'Ń', 'Ň', 'Ñ', 'Ņ', 'Ó', 'Ò', 'Ô', 'Ö', 'Ǒ', 'Ŏ', 'Ō', 'Õ', 'Ő', 'Ọ', 'Ø', 'Ǿ', 'Ơ', 'Ŕ', 'Ř', 'Ŗ', 'Ś', 'Ŝ', 'Š', 'Ş', 'Ș', 'Ṣ', 'Ť', 'Ţ', 'Ṭ', 'Ú', 'Ù', 'Û', 'Ü', 'Ǔ', 'Ŭ', 'Ū', 'Ũ', 'Ű', 'Ů', 'Ų', 'Ụ', 'Ư', 'Ẃ', 'Ẁ', 'Ŵ', 'Ẅ', 'Ƿ', 'Ý', 'Ỳ', 'Ŷ', 'Ÿ', 'Ȳ', 'Ỹ', 'Ƴ', 'Ź', 'Ż', 'Ž', 'Ẓ', 'á', 'à', 'â', 'ä', 'ǎ', 'ă', 'ā', 'ã', 'å', 'ǻ', 'ą', 'ɓ', 'ć', 'ċ', 'ĉ', 'č', 'ç', 'ď', 'ḍ', 'ɗ', 'é', 'è', 'ė', 'ê', 'ë', 'ě', 'ĕ', 'ē', 'ę', 'ẹ', 'ǝ', 'ə', 'ɛ', 'ġ', 'ĝ', 'ǧ', 'ğ', 'ģ', 'ɣ', 'ĥ', 'ḥ', 'ħ', 'ı', 'í', 'ì', 'i', 'î', 'ï', 'ǐ', 'ĭ', 'ī', 'ĩ', 'į', 'ị', 'ĵ', 'ķ', 'ƙ', 'ĸ', 'ĺ', 'ļ', 'ł', 'ľ', 'ŀ', 'ŉ', 'ń', 'ň', 'ñ', 'ņ', 'ó', 'ò', 'ô', 'ö', 'ǒ', 'ŏ', 'ō', 'õ', 'ő', 'ọ', 'ø', 'ǿ', 'ơ', 'ŕ', 'ř', 'ŗ', 'ś', 'ŝ', 'š', 'ş', 'ș', 'ṣ', 'ſ', 'ť', 'ţ', 'ṭ', 'ú', 'ù', 'û', 'ü', 'ǔ', 'ŭ', 'ū', 'ũ', 'ű', 'ů', 'ų', 'ụ', 'ư', 'ẃ', 'ẁ', 'ŵ', 'ẅ', 'ƿ', 'ý', 'ỳ', 'ŷ', 'ÿ', 'ȳ', 'ỹ', 'ƴ', 'ź', 'ż', 'ž', 'ẓ', 'Α', 'Ά', 'Β', 'Γ', 'Δ', 'Ε', 'Έ', 'Ζ', 'Η', 'Ή', 'Θ', 'Ι', 'Ί', 'Ϊ', 'Κ', 'Λ', 'Μ', 'Ν', 'Ξ', 'Ο', 'Ό', 'Π', 'Ρ', 'Σ', 'Τ', 'Υ', 'Ύ', 'Ϋ', 'Φ', 'Χ', 'Ψ', 'Ω', 'Ώ', 'α', 'ά', 'β', 'γ', 'δ', 'ε', 'έ', 'ζ', 'η', 'ή', 'θ', 'ι', 'ί', 'ϊ', 'ΐ', 'κ', 'λ', 'μ', 'ν', 'ξ', 'ο', 'ό', 'π', 'ρ', 'σ', 'ς', 'τ', 'υ', 'ύ', 'ϋ', 'ΰ', 'φ', 'χ', 'ψ', 'ω', 'ώ', 'Æ', 'Ǽ', 'Ǣ', 'Ð', 'Đ', 'Ĳ', 'Ŋ', 'Œ', 'Þ', 'Ŧ', 'æ', 'ǽ', 'ǣ', 'ð', 'đ', 'ĳ', 'ŋ', 'œ', 'ß', 'þ', 'ŧ' );
+  static $to = array( 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'B', 'C', 'C', 'C', 'C', 'C', 'D', 'D', 'D', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'G', 'G', 'G', 'G', 'G', 'G', 'H', 'H', 'H', 'I', 'I', 'I', 'I', 'I', 'I', 'I', 'I', 'I', 'I', 'I', 'I', 'J', 'K', 'K', 'L', 'L', 'L', 'L', 'L', 'N', 'N', 'N', 'N', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'O', 'R', 'R', 'R', 'S', 'S', 'S', 'S', 'S', 'S', 'T', 'T', 'T', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'U', 'W', 'W', 'W', 'W', 'W', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Y', 'Z', 'Z', 'Z', 'Z', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'b', 'c', 'c', 'c', 'c', 'c', 'd', 'd', 'd', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'g', 'g', 'g', 'g', 'g', 'g', 'h', 'h', 'h', 'i', 'i', 'i', 'i', 'i', 'i', 'i', 'i', 'i', 'i', 'i', 'i', 'j', 'k', 'k', 'q', 'l', 'l', 'l', 'l', 'l', 'n', 'n', 'n', 'n', 'n', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'r', 'r', 'r', 's', 's', 's', 's', 's', 's', 's', 't', 't', 't', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'w', 'w', 'w', 'w', 'w', 'y', 'y', 'y', 'y', 'y', 'y', 'y', 'z', 'z', 'z', 'z', 'A', 'A', 'V', 'G', 'D', 'E', 'E', 'Z', 'I', 'I', 'Th', 'I', 'I', 'I', 'K', 'L', 'M', 'N', 'X', 'O', 'O', 'P', 'R', 'S', 'T', 'Y', 'Y', 'Y', 'F', 'Ch', 'Ps', 'O', 'O', 'a', 'a', 'v', 'g', 'd', 'e', 'e', 'z', 'i', 'i', 'th', 'i', 'i', 'i', 'i', 'k', 'l', 'm', 'n', 'x', 'o', 'o', 'p', 'r', 's', 's', 't', 'y', 'y', 'y', 'y', 'f', 'ch', 'ps', 'o', 'o', 'Ae', 'Ae', 'Ae', 'Dh', 'Dj', 'Ij', 'Ng', 'Oe', 'Th', 'Th', 'ae', 'ae', 'ae', 'dh', 'dj', 'ij', 'ng', 'oe', 'ss', 'th', 'th' );
+  return str_replace($from, $to, $str);
 }
 
 function get_fields() {
@@ -867,7 +942,7 @@ $entry_format = array
 
  array('note', '. _', NULL),
 
- array('keywords', '. [_] ', NULL),
+ array('keywords', '. [_]', NULL),
 
  array('abstract', '<blockquote><small><b>Abstract:</b> _ </small></blockquote>', NULL),
  array('annote', '<blockquote><small><b>Notes:</b> _ </small></blockquote>', NULL),
@@ -894,6 +969,7 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
     else $print_fn($entry, $field, $value);
     echo $pattern[1];
   }
+  echo ' ';
   if (isset($n)) {
     if (isset($sql_priv['DELETE']))
       echo h_get('edit',
@@ -1203,6 +1279,13 @@ function h_hidden($name, $value) {
   $attr['type'] = 'hidden';
   $attr['name'] = $name;
   $attr['value'] = $value;
+  return h('input', $attr);
+}
+
+function h_file() {
+  $attr['type'] = 'file';
+  $attr['name'] = 'file';
+  $attr['id'] = 'file';
   return h('input', $attr);
 }
 
