@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.35 2011/05/06 00:56:43 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.36 2011/05/06 21:44:59 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -628,30 +628,32 @@ function entry_errors(&$entry, $editid) {
   }
 
   // deniz 20110506: We should try moving uploaded files here when we can warn on errors
-  if ($_FILES["file"]["error"] == UPLOAD_ERR_OK) {
-    $bib = $_SERVER["DOCUMENT_ROOT"] . "/bib";
-    $dir = upload_dir($entry);
-    if (!file_exists("$bib/$dir") && !mkdir("$bib/$dir", 0775, true)) {
+  if (isset($_FILES["file"])) {
+    if ($_FILES["file"]["error"] == UPLOAD_ERR_OK) {
+      $bib = $_SERVER["DOCUMENT_ROOT"] . "/bib";
+      $dir = upload_dir($entry);
+      if (!file_exists("$bib/$dir") && !mkdir("$bib/$dir", 0775, true)) {
 	$err[] = "Failed to create directory $bib/$dir";
-    } else {
-      $name = $_FILES["file"]["name"];
-      $tmp = $_FILES["file"]["tmp_name"];
-      if (!move_uploaded_file($tmp, "$bib/$dir/$name")) {
-	$err[] = "Cannot move uploaded file to $bib/$dir/$name";
       } else {
-	$url = "/bib/$dir/" . urlencode($name);
-	if (!isset($entry['url'])) {
-	  $entry['url'] = $url;
-	} elseif (!is_array($entry['url'])) {
-	  $entry['url'] = array($entry['url'], $url);
+	$name = $_FILES["file"]["name"];
+	$tmp = $_FILES["file"]["tmp_name"];
+	if (!move_uploaded_file($tmp, "$bib/$dir/$name")) {
+	  $err[] = "Cannot move uploaded file to $bib/$dir/$name";
 	} else {
-	  $entry['url'][] = $url;
+	  $url = "/bib/$dir/" . urlencode($name);
+	  if (!isset($entry['url'])) {
+	    $entry['url'] = $url;
+	  } elseif (!is_array($entry['url'])) {
+	    $entry['url'] = array($entry['url'], $url);
+	  } else {
+	    $entry['url'][] = $url;
+	  }
 	}
       }
-    }
-  } elseif ($_FILES["file"]["error"] != UPLOAD_ERR_NO_FILE) {
-    $err[] = $file_error_types[$_FILES["file"]["error"]];
-  } 
+    } elseif ($_FILES["file"]["error"] != UPLOAD_ERR_NO_FILE) {
+      $err[] = $file_error_types[$_FILES["file"]["error"]];
+    } 
+  }
 
   // anything else illegal in bibtex specs?
   return $err;
@@ -784,7 +786,7 @@ function field_equal(&$a1, &$a2) {
 /** import()
  */
 function import() {
-  global $array_fields;
+  global $array_fields, $_nocheck;
   $entries = array();
   $errors = '';
   $fields = array();
@@ -838,10 +840,16 @@ function import() {
     $entries[] = $fields;
     $errors .= implode("\n", entry_errors($fields,-1));
   }
-  if ($errors) {
+  if ($errors && !$_nocheck) {
     echo h('p', h('strong', 'Import errors'));
     echo "<pre>\n$errors\nEntry:\n";
     echo $_REQUEST["text"];
+    echo "\$_FILES: ";
+    print_r($_FILES["file"]);
+    echo "\$_REQUEST: ";
+    print_r($_REQUEST);
+    echo "\$_SERVER: ";
+    print_r($_SERVER);
     echo "\n</pre>\n";
   } else {
     foreach ($entries as $e) {
@@ -922,7 +930,6 @@ $entry_format = array
  array('year', '. _', NULL),
 
  array('title', '. _', 'print_title_field'),
- array('url', ' [_]', 'print_url_field'),
 
  array('journal', '. <i>_</i>', NULL),
  array('booktitle', '. In <i>_</i>', NULL),
@@ -942,7 +949,8 @@ $entry_format = array
 
  array('note', '. _', NULL),
 
- array('keywords', '. [_]', NULL),
+ array('keywords', '. [<small>_</small>]', NULL),
+ array('url', ' _', 'print_url_field'),
 
  array('abstract', '<blockquote><small><b>Abstract:</b> _ </small></blockquote>', NULL),
  array('annote', '<blockquote><small><b>Notes:</b> _ </small></blockquote>', NULL),
@@ -958,8 +966,9 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
   foreach ($entry_format as $fmt) {
     $field = $fmt[0];
     $value = isset($entry[$field]) ? $entry[$field] : NULL;
+    if ($field == 'url') { print_url_field($entry, $entryid); continue; }
     if (!isset($value)) continue;
-    if ($field == 'url' and !is_array($value)) continue;
+    // if ($field == 'url' and !is_array($value)) continue;
     if ($field == 'editor' and isset($entry['author'])) continue;
     $pattern = $fmt[1];
     $pattern = explode('_', $pattern);
@@ -969,6 +978,8 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
     else $print_fn($entry, $field, $value);
     echo $pattern[1];
   }
+  // deniz 20110507: moving this stuff to print_url_field
+  /*****
   echo ' ';
   if (isset($n)) {
     if (isset($sql_priv['DELETE']))
@@ -982,6 +993,7 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
 		       'id' => $entryid),
 		 array('class' => 'edit'));
   }
+  *****/
   echo h('br');
 }
 
@@ -1023,29 +1035,60 @@ function print_title_field(&$entry, $field, $value) {
   if (isset($url)) {
     echo h_a($txt, $url);
   } else {
-    $author = isset($entry['author']) ? $entry['author'] :
-      (isset($entry['editor']) ? $entry['editor'] : '');
-    if (is_array($author)) $author = $author[0];
-    $url = 'http://www.google.com/search?q='.urlencode("\"$value\" $author");
-    echo h_a($txt, $url, array('class' => 'google'));
+    echo h_a($txt, google_url($entry), array('class' => 'google0'));
   }
 }
 
-function print_url_field(&$entry, $field, $value) {
-  /* if there was a single url, it was output with the title */
-  if (!is_array($value)) return;
-  for ($i = 1; $i < count($value); $i++) {
-    $url = $value[$i];
-    $attr['href'] = htmlspecialchars($url);
-    $attr['class'] = 'url';
-    $text = 'url';
-    if (preg_match('/\.pdf$/i', $url)) { $text = 'pdf'; }
-    elseif (preg_match('/\.ps(\.gz)?$/i', $url)) { $text = 'ps'; }
-    elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
-    elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
-    if ($i > 1) { echo ' '; }
-    echo h('a', $attr, $text);
-  }
+function scholar_url($entry) {
+  return 'http://scholar.google.com/scholar?q='.google_key($entry);
+}
+
+function google_url($entry) {
+  return 'http://www.google.com/search?q='.google_key($entry);
+}
+
+function google_key($entry) {
+    $author = isset($entry['author']) ? $entry['author'] :
+      (isset($entry['editor']) ? $entry['editor'] : '');
+    if (is_array($author)) $author = $author[0];
+    $title = $entry['title'];
+    return urlencode("\"$title\" $author");
+}
+
+function print_url_field($entry, $entryid) {
+  global $sql_priv;
+  $attr['class'] = 'url';
+  $value = $entry['url'];
+  if (isset($value)) {
+      if (!is_array($value)) $value = array($value);
+      for ($i = 0; $i < count($value); $i++) {
+	$url = $value[$i];
+	$attr['href'] = htmlspecialchars($url);
+	$text = 'url';
+	if (preg_match('/\.pdf$/i', $url)) { $text = 'pdf'; }
+	elseif (preg_match('/\.ps(\.gz)?$/i', $url)) { $text = 'ps'; }
+	elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
+	elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
+	echo ' '.h('a', $attr, $text);
+      }
+    }
+  /* always add the standard google urls */
+  $attr['class'] = 'google';
+  $attr['href'] = google_url($entry);
+  echo ' '.h('a', $attr, 'google');
+  $attr['href'] = scholar_url($entry);
+  echo ' '.h('a', $attr, 'scholar');
+  /* edit urls if user has privilege */
+  if (isset($sql_priv['DELETE']))
+    echo ' '.h_get('edit',
+		   array('fn' => 'edit_entry',
+			 'id' => $entryid),
+		   array('class' => 'edit'));
+  if (isset($sql_priv['INSERT']))
+    echo ' '.h_get('copy',
+		   array('fn' => 'copy_entry',
+			 'id' => $entryid),
+		   array('class' => 'edit'));
 }
 
 function print_field($field, $value, $txt=NULL) {
@@ -1609,16 +1652,16 @@ function sql_newid() {
   return $answer;
 }
  
-/** entry_types is the official specification for bibtex.  
- * In addition to these fields we have fields that are required for
- * every type: entrytype and citekey.  We have extra optional fields
- * key, crossref and annote.  We also added extra fields: url,
- * keywords, doi, abstract: not specified in bibtex standard.  Finally the program
+/** entry_types is the official specification for bibtex.  In addition
+ * to these fields we have fields that are required for every type:
+ * entrytype and citekey.  We have extra optional fields key, crossref
+ * and annote.  We also added extra fields: url, keywords, doi, isbn,
+ * abstract: not specified in bibtex standard.  Finally the program
  * will accept any new field typed by the user.
  */
 $extra_index_fields = array('entrytype', 'citekey');
 $extra_urlkey_fields = array('url', 'keywords');
-$extra_optional_fields = array('key', 'crossref', 'doi');
+$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn');
 $extra_textarea_fields = array('abstract', 'annote');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 $array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
@@ -1790,12 +1833,13 @@ function edit_value(v) {
 <style type="text/css">
 <!--
 a.local { text-decoration:none; color:black }
-a.google { text-decoration:none; color:black }
+a.google0 { text-decoration:none; color:black }
 a.url { font-variant:small-caps }
 a.edit { font-variant:small-caps; color:black }
+a.google { font-variant:small-caps; color:black }
 p.rcsid { font-size:xx-small }
 input { vertical-align:top }
-a { vertical-align:top }
+a.top { vertical-align:top }
 -->
 </style>
 </head>
