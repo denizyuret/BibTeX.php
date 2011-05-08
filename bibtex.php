@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.36 2011/05/06 21:44:59 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.37 2011/05/08 17:13:17 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -422,6 +422,7 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
 	 h_submit('Submit').
 	 h_button('Cancel', 'window.back()').
 	 h_submit('Don\'t check errors', 'nocheck').
+	 h_file().
 	 h('br').'If there are multiple authors, editors, urls, or keywords please enter them on separate lines.'
 	 );
   echo h_start('p');
@@ -445,7 +446,6 @@ function entry_form(&$entry, $title = NULL, $id = NULL) {
   foreach ($extra_textarea_fields as $f)
     entry_field($entry, $f);
   echo h_hidden('nfield', $entry_field_index);
-  echo h_file();
   echo h_end('p');
   echo h_end('form');
 }
