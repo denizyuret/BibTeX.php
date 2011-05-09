@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.37 2011/05/08 17:13:17 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.38 2011/05/08 17:53:01 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1656,12 +1656,12 @@ function sql_newid() {
  * to these fields we have fields that are required for every type:
  * entrytype and citekey.  We have extra optional fields key, crossref
  * and annote.  We also added extra fields: url, keywords, doi, isbn,
- * abstract: not specified in bibtex standard.  Finally the program
- * will accept any new field typed by the user.
+ * issn, abstract: not specified in bibtex standard.  Finally the
+ * program will accept any new field typed by the user.
  */
 $extra_index_fields = array('entrytype', 'citekey');
 $extra_urlkey_fields = array('url', 'keywords');
-$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn');
+$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn', 'issn');
 $extra_textarea_fields = array('abstract', 'annote');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 $array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
