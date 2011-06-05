@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.38 2011/05/08 17:53:01 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.39 2011/05/09 08:10:43 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1069,6 +1069,7 @@ function print_url_field($entry, $entryid) {
 	elseif (preg_match('/\.ps(\.gz)?$/i', $url)) { $text = 'ps'; }
 	elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
 	elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
+	elseif (preg_match('/\.mobi$/i', $url)) { $text = 'mobi'; }
 	echo ' '.h('a', $attr, $text);
       }
     }
@@ -1656,12 +1657,12 @@ function sql_newid() {
  * to these fields we have fields that are required for every type:
  * entrytype and citekey.  We have extra optional fields key, crossref
  * and annote.  We also added extra fields: url, keywords, doi, isbn,
- * issn, abstract: not specified in bibtex standard.  Finally the
+ * issn, lccn, abstract: not specified in bibtex standard.  Finally the
  * program will accept any new field typed by the user.
  */
 $extra_index_fields = array('entrytype', 'citekey');
 $extra_urlkey_fields = array('url', 'keywords');
-$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn', 'issn');
+$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn', 'issn', 'lccn');
 $extra_textarea_fields = array('abstract', 'annote');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 $array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
