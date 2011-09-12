@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.39 2011/05/09 08:10:43 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.40 2011/06/05 20:11:36 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -20,6 +20,11 @@ define('rcsid', 'x$Id: bibtex.php,v 1.39 2011/05/09 08:10:43 dyuret Exp dyuret $
  * incompatibility between php and mysql.
  *
  * TODO: find the right way to deal with OLD_PASSWORD incompatibility.
+ * TODO: sort by entry date
+ * TODO: auto-fill from google scholar or google books, quick create entry by search
+ * TODO: check multiple bibtex import
+ * TODO: javascript for viewing abstract and annote
+ * TODO: escape single quote in search string o'shea
  *
  * The following array should have the login information for the anonymous user:
  */
