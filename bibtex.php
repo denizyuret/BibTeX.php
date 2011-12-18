@@ -1,23 +1,30 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.40 2011/06/05 20:11:36 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.41 2011/09/12 13:32:03 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
+ * $ mysql -u root -p
+ * CREATE DATABASE bibtex;
+ * USE bibtex;
  * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), user VARCHAR(255), s SERIAL, INDEX(entryid), INDEX(value));
  *
  * Authentication and privileges are managed by mysql.  bibtex.php
  * just sends the login information to mysql.  Here is the scheme
  * I use for privileges:
  *
+ * CREATE USER bibtex@localhost IDENTIFIED BY 'bibtex';
  * GRANT SELECT ON bibtex.bibtex TO bibtex@localhost;
+ * CREATE USER user@localhost IDENTIFIED BY 'password';
  * GRANT SELECT, INSERT ON bibtex.bibtex TO user@localhost;
- * SET PASSWORD FOR user@localhost = OLD_PASSWORD('abcdef');
  * GRANT ALL PRIVILEGES ON bibtex.bibtex TO root@localhost;
  *
  * That way only root can alter or delete entries, regular users can
- * select and insert anonymous user (bibtex) can only select.  The SET
+ * select and insert anonymous user (bibtex) can only select.  
+ * 
+ * Deprecated: The SET
  * PASSWORD command needs to use the OLD_PASSWORD function because of an
  * incompatibility between php and mysql.
+ * SET PASSWORD FOR user@localhost = OLD_PASSWORD('abcdef');
  *
  * TODO: find the right way to deal with OLD_PASSWORD incompatibility.
  * TODO: sort by entry date
@@ -1075,6 +1082,7 @@ function print_url_field($entry, $entryid) {
 	elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
 	elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
 	elseif (preg_match('/\.mobi$/i', $url)) { $text = 'mobi'; }
+	elseif (preg_match('/\.djvu$/i', $url)) { $text = 'djvu'; }
 	echo ' '.h('a', $attr, $text);
       }
     }
