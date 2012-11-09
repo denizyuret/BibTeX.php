@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.41 2011/09/12 13:32:03 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.42 2011/12/18 11:40:01 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1082,6 +1082,7 @@ function print_url_field($entry, $entryid) {
 	elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
 	elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
 	elseif (preg_match('/\.mobi$/i', $url)) { $text = 'mobi'; }
+	elseif (preg_match('/\.epub$/i', $url)) { $text = 'epub'; }
 	elseif (preg_match('/\.djvu$/i', $url)) { $text = 'djvu'; }
 	echo ' '.h('a', $attr, $text);
       }
