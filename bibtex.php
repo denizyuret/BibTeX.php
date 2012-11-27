@@ -1,30 +1,23 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.42 2011/12/18 11:40:01 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.41 2011/09/12 13:32:03 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
- * $ mysql -u root -p
- * CREATE DATABASE bibtex;
- * USE bibtex;
  * CREATE TABLE bibtex (entryid INT, field VARCHAR(255), value VARCHAR(65000), user VARCHAR(255), s SERIAL, INDEX(entryid), INDEX(value));
  *
  * Authentication and privileges are managed by mysql.  bibtex.php
  * just sends the login information to mysql.  Here is the scheme
  * I use for privileges:
  *
- * CREATE USER bibtex@localhost IDENTIFIED BY 'bibtex';
  * GRANT SELECT ON bibtex.bibtex TO bibtex@localhost;
- * CREATE USER user@localhost IDENTIFIED BY 'password';
  * GRANT SELECT, INSERT ON bibtex.bibtex TO user@localhost;
+ * SET PASSWORD FOR user@localhost = OLD_PASSWORD('abcdef');
  * GRANT ALL PRIVILEGES ON bibtex.bibtex TO root@localhost;
  *
  * That way only root can alter or delete entries, regular users can
- * select and insert anonymous user (bibtex) can only select.  
- * 
- * Deprecated: The SET
+ * select and insert anonymous user (bibtex) can only select.  The SET
  * PASSWORD command needs to use the OLD_PASSWORD function because of an
  * incompatibility between php and mysql.
- * SET PASSWORD FOR user@localhost = OLD_PASSWORD('abcdef');
  *
  * TODO: find the right way to deal with OLD_PASSWORD incompatibility.
  * TODO: sort by entry date
@@ -964,24 +957,23 @@ $entry_format = array
  array('keywords', '. [<small>_</small>]', NULL),
  array('url', ' _', 'print_url_field'),
 
- array('abstract', '<blockquote><small><b>Abstract:</b> _ </small></blockquote>', NULL),
- array('annote', '<blockquote><small><b>Notes:</b> _ </small></blockquote>', NULL),
+# array('abstract', '<blockquote><small><b>Abstract:</b> _ </small></blockquote>', NULL),
+# array('annote', '<blockquote><small><b>Notes:</b> _ </small></blockquote>', NULL),
 # array('entrytype', '[_:', NULL),
 # array('citekey', '_] ', NULL),
 );
 
 function print_entry(&$entry, $entryid = NULL, $n = NULL) {
   global $entry_format, $sql_priv;
+  echo h('div', true);
   if (isset($entryid) and isset($n)) {
     echo h_checkbox("e$n", $entryid);
   }
   foreach ($entry_format as $fmt) {
     $field = $fmt[0];
-    $value = isset($entry[$field]) ? $entry[$field] : NULL;
-    if ($field == 'url') { print_url_field($entry, $entryid); continue; }
-    if (!isset($value)) continue;
-    // if ($field == 'url' and !is_array($value)) continue;
+    if (!isset($entry[$field])) continue;
     if ($field == 'editor' and isset($entry['author'])) continue;
+    $value = $entry[$field];
     $pattern = $fmt[1];
     $pattern = explode('_', $pattern);
     echo $pattern[0];
@@ -990,31 +982,28 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
     else $print_fn($entry, $field, $value);
     echo $pattern[1];
   }
-  // deniz 20110507: moving this stuff to print_url_field
-  /*****
-  echo ' ';
-  if (isset($n)) {
-    if (isset($sql_priv['DELETE']))
-      echo h_get('edit',
-		 array('fn' => 'edit_entry',
-		       'id' => $entryid),
-		 array('class' => 'edit')).' ';
-    if (isset($sql_priv['INSERT']))
-      echo h_get('copy',
-		 array('fn' => 'copy_entry',
-		       'id' => $entryid),
-		 array('class' => 'edit'));
+  print_extra_fields($entry, $entryid);
+  echo h('div', false);
+}
+
+function print_field($field, $value, $txt=NULL) {
+  if (is_array($value)) {
+    foreach($value as $v) {
+      if ($v != $value[0]) echo ', ';
+      print_field($field, $v, $txt);
+    }
+  } else {
+    if (!isset($txt)) $txt = $value;
+    //$txt = htmlspecialchars($txt);
+    $txt = latex2html($txt);
+    echo h_get($txt, 
+	       array('fn' => 'select', 
+		     'field' => $field, 
+		     'value' => $value),
+	       array('class' => 'local'));
   }
-  *****/
-  echo h('br');
 }
-
-function name_flip($str) {
-  $parts = explode(', ', $str);
-  $first = array_pop($parts);
-  return $first . ' '. implode(', ', $parts);
-}
-
+ 
 function print_author_field(&$entry, $field, $value) {
   if (!is_array($value)) {
     print_field($field, $value, name_flip($value));
@@ -1051,26 +1040,8 @@ function print_title_field(&$entry, $field, $value) {
   }
 }
 
-function scholar_url($entry) {
-  return 'http://scholar.google.com/scholar?q='.google_key($entry);
-}
-
-function google_url($entry) {
-  return 'http://www.google.com/search?q='.google_key($entry);
-}
-
-function google_key($entry) {
-    $author = isset($entry['author']) ? $entry['author'] :
-      (isset($entry['editor']) ? $entry['editor'] : '');
-    if (is_array($author)) $author = $author[0];
-    $title = $entry['title'];
-    return urlencode("\"$title\" $author");
-}
-
-function print_url_field($entry, $entryid) {
-  global $sql_priv;
+function print_url_field(&$entry, $field, $value) {
   $attr['class'] = 'url';
-  $value = $entry['url'];
   if (isset($value)) {
       if (!is_array($value)) $value = array($value);
       for ($i = 0; $i < count($value); $i++) {
@@ -1082,18 +1053,38 @@ function print_url_field($entry, $entryid) {
 	elseif (preg_match('/\.ppt$/i', $url)) { $text = 'ppt'; }
 	elseif (preg_match('/\.doc$/i', $url)) { $text = 'doc'; }
 	elseif (preg_match('/\.mobi$/i', $url)) { $text = 'mobi'; }
-	elseif (preg_match('/\.epub$/i', $url)) { $text = 'epub'; }
 	elseif (preg_match('/\.djvu$/i', $url)) { $text = 'djvu'; }
 	echo ' '.h('a', $attr, $text);
       }
-    }
+   }
+}
+
+function print_extra_fields($entry, $entryid) {
+  /* add abstract and annote if exist */
+  $attr1['class'] = 'abstract';
+  $attr1['href'] = "";
+  if (isset($entry['abstract'])) {
+    $attr1['onclick'] = "toggleVisible('abstract$entryid');return(false);";
+    echo ' '.h('a', $attr1, 'abstract');
+  }
+  if (isset($entry['annote'])) {
+    $attr1['onclick'] = "toggleVisible('annote$entryid');return(false);";
+    echo ' '.h('a', $attr1, 'notes');
+  }
+
   /* always add the standard google urls */
   $attr['class'] = 'google';
   $attr['href'] = google_url($entry);
   echo ' '.h('a', $attr, 'google');
   $attr['href'] = scholar_url($entry);
   echo ' '.h('a', $attr, 'scholar');
+  if ($entry['entrytype'] == 'book') {
+    $attr['href'] = books_url($entry);
+    echo ' '.h('a', $attr, 'books');
+  }
+
   /* edit urls if user has privilege */
+  global $sql_priv;
   if (isset($sql_priv['DELETE']))
     echo ' '.h_get('edit',
 		   array('fn' => 'edit_entry',
@@ -1104,26 +1095,47 @@ function print_url_field($entry, $entryid) {
 		   array('fn' => 'copy_entry',
 			 'id' => $entryid),
 		   array('class' => 'edit'));
-}
 
-function print_field($field, $value, $txt=NULL) {
-  if (is_array($value)) {
-    foreach($value as $v) {
-      if ($v != $value[0]) echo ', ';
-      print_field($field, $v, $txt);
-    }
-  } else {
-    if (!isset($txt)) $txt = $value;
-    //$txt = htmlspecialchars($txt);
-    $txt = latex2html($txt);
-    echo h_get($txt, 
-	       array('fn' => 'select', 
-		     'field' => $field, 
-		     'value' => $value),
-	       array('class' => 'local'));
+  /* finally add the initially invisible abstract and annote */
+  $attr2['class'] = "abstract";
+  $attr2['style'] = "display:none";
+  if (isset($entry['abstract'])) {
+    $attr2['id'] = "abstract$entryid";
+    echo ' '.h('div', $attr2, h('blockquote', $entry['abstract']));
+  }
+  if (isset($entry['annote'])) {
+    $attr2['id'] = "annote$entryid";
+    echo ' '.h('div', $attr2, h('blockquote', $entry['annote']));
   }
 }
- 
+
+function name_flip($str) {
+  $parts = explode(', ', $str);
+  $first = array_pop($parts);
+  return $first . ' '. implode(', ', $parts);
+}
+
+function google_url($entry) {
+  return 'http://www.google.com/search?q='.google_key($entry);
+}
+
+function scholar_url($entry) {
+  return 'http://scholar.google.com/scholar?q='.google_key($entry);
+}
+
+function books_url($entry) {
+  return 'http://books.google.com/books?q='.google_key($entry);
+}
+
+function google_key($entry) {
+    $author = isset($entry['author']) ? $entry['author'] :
+      (isset($entry['editor']) ? $entry['editor'] : '');
+    if (is_array($author)) $author = $author[0];
+    $title = $entry['title'];
+    return urlencode("\"$title\" $author");
+}
+
+
 /** utf2latex($txt) converts utf8 characters to latex sequences.
  * BUG: It only handles Turkish characters.
  */
@@ -1843,6 +1855,15 @@ function edit_value(v) {
   }
 }
 
+function toggleVisible(arg)
+{
+  var targetElement = document.getElementById(arg);
+  if (targetElement.style.display == "none") {
+    targetElement.style.display = ""; 
+  } else {
+    targetElement.style.display = "none";
+  }
+}
 -->
 </script>
 <style type="text/css">
@@ -1852,6 +1873,8 @@ a.google0 { text-decoration:none; color:black }
 a.url { font-variant:small-caps }
 a.edit { font-variant:small-caps; color:black }
 a.google { font-variant:small-caps; color:black }
+a.abstract { font-variant:small-caps; color:black }
+div.abstract { font-style:oblique }
 p.rcsid { font-size:xx-small }
 input { vertical-align:top }
 a.top { vertical-align:top }
