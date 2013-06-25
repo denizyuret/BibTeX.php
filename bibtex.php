@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.41 2011/09/12 13:32:03 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.44 2012/11/27 21:27:05 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -645,6 +645,12 @@ function entry_errors(&$entry, $editid) {
 	if (!move_uploaded_file($tmp, "$bib/$dir/$name")) {
 	  $err[] = "Cannot move uploaded file to $bib/$dir/$name";
 	} else {
+	  file_put_contents("$bib/$dir/.htaccess", 'AuthType Basic
+AuthName "Password Required"
+AuthUserFile /etc/.htpasswd
+AuthGroupFile /dev/null
+Require valid-user
+');
 	  $url = "/bib/$dir/" . urlencode($name);
 	  if (!isset($entry['url'])) {
 	    $entry['url'] = $url;
