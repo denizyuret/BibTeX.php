@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.44 2012/11/27 21:27:05 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.45 2013/06/25 19:31:16 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -47,12 +47,21 @@ $fn_select = array('search', 'select', 'show', 'index');
 $fn_insert = array('addkey', 'new_entry', 'copy_entry', 'entry', 'import');
 $fn_delete = array('delete', 'delkey', 'edit_value', 'edit_entry');
 $fn_all = array_merge($fn_header, $fn_select, $fn_insert, $fn_delete);
+$rvars = array('field', 'fn', 'id', 'keyword', 'newval', 'nfield',
+	       'nocheck', 'nselect', 'pattern', 'sort', 'type',
+	       'user', 'value');
+foreach($rvars as $v) {
+    $GLOBALS['_'.$v] = $_REQUEST[$v];
+}
 
 function main() {
   // session_start();
   // error_reporting(E_ALL);
   global $html_header, $html_footer, $fn_header, $fn_all;
-  import_request_variables('gp', '_');
+  // This is deprecated:
+  // import_request_variables('gp', '_');
+  // We do this manually upstairs instead.
+
   global $_fn;
   sql_init();
   if (isset($_fn) and in_array($_fn, $fn_header)) $_fn();
