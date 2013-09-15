@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.45 2013/06/25 19:31:16 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.46 2013/08/16 16:33:35 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -20,10 +20,8 @@ define('rcsid', 'x$Id: bibtex.php,v 1.45 2013/06/25 19:31:16 dyuret Exp dyuret $
  * incompatibility between php and mysql.
  *
  * TODO: find the right way to deal with OLD_PASSWORD incompatibility.
- * TODO: sort by entry date
  * TODO: auto-fill from google scholar or google books, quick create entry by search
  * TODO: check multiple bibtex import
- * TODO: javascript for viewing abstract and annote
  * TODO: escape single quote in search string o'shea
  *
  * The following array should have the login information for the anonymous user:
@@ -107,11 +105,11 @@ function navbar_search() {
  * TODO: restrict the fields that can be indexed?
  */
 function navbar_index() {
-  global $uniq_fields;
-  if (!isset($uniq_fields)) $uniq_fields = sql_uniq(NULL);
-  natcasesort($uniq_fields);
+  global $index_fields;
+  if (!isset($index_fields)) $index_fields = sql_uniq(NULL);
+  natcasesort($index_fields);
   return h_form(h_hidden('fn', 'index'),
-		h_select('field', $uniq_fields, 'Index', 'submit()'));
+		h_select('field', $index_fields, 'Index', 'submit()'));
 		
 }
 
@@ -126,17 +124,19 @@ function navbar_new() {
 }
  
 function navbar_sort() {
-  global $_fn, $_pattern, $_field, $_value, $uniq_fields;
-  if (!isset($uniq_fields)) $uniq_fields = sql_uniq(NULL);
+  global $_fn, $_pattern, $_field, $_value, $sort_fields;
+  if (!isset($sort_fields)) $sort_fields = sql_uniq(NULL);
+  $sort_fields[] = 'entryid';
+  natcasesort($sort_fields);
   if ($_fn == 'search')
     return h_form(h_hidden('fn', 'search'),
 		  h_hidden('pattern', $_pattern),
-		  h_select('sort', $uniq_fields, 'Sort', 'submit()'));
+		  h_select('sort', $sort_fields, 'Sort', 'submit()'));
   elseif ($_fn == 'select')
     return h_form(h_hidden('fn', 'select'),
 		  h_hidden('field', $_field),
 		  h_hidden('value', $_value),
-		  h_select('sort', $uniq_fields, 'Sort', 'submit()'));
+		  h_select('sort', $sort_fields, 'Sort', 'submit()'));
 }
  
 function navbar_login() {
@@ -190,11 +190,15 @@ function selection_form($select, $title) {
   }
   echo h_end('p');
 
-  echo h_start('p');
-  $ordered = array_map("select_sort_field", $select);
+  if ($_sort == 'entryid') {
+      foreach ($select as $entryid => $ignore)
+	  $ordered[$entryid] = 1000000000 - $entryid;
+  } else {
+      $ordered = array_map("select_sort_field", $select);
+  }
   natcasesort($ordered);
-  // if ($_sort == 'year') $ordered = array_reverse($ordered, TRUE);
   $n = 0;
+  echo h_start('p');
   foreach ($ordered as $entryid => $ignore) 
     print_entry($select[$entryid], $entryid, ++$n);
   echo h_end('p');
@@ -216,11 +220,14 @@ function select_sort_field(&$entry) {
     $m = (isset($entry['month'])) ? monthno($entry['month']) : 0;
     $ans = 100*$ans + $m;
     // Reverse sorting so newer appears at top
-    $ans = 1000000 - $ans;
+    $ans = 1000000000 - $ans;
   }
   if ($key == 'author' || key == 'editor') {
     $ans = find_last_name($ans);
   }
+  if ($key == 'citations') {
+    $ans = 1000000000 - $ans;
+  } 
   return $ans;
 }
 
@@ -1703,7 +1710,7 @@ function sql_newid() {
  */
 $extra_index_fields = array('entrytype', 'citekey');
 $extra_urlkey_fields = array('url', 'keywords');
-$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn', 'issn', 'lccn');
+$extra_optional_fields = array('key', 'crossref', 'doi', 'isbn', 'issn', 'lccn', 'citations');
 $extra_textarea_fields = array('abstract', 'annote');
 $extra_fields = array_merge($extra_index_fields, $extra_optional_fields, $extra_textarea_fields, $extra_urlkey_fields);
 $array_fields = array('author' => ' and ', 'editor' => ' and ', 'keywords' => ',', 'url' => ',');
