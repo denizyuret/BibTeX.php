@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.46 2013/08/16 16:33:35 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.47 2013/09/15 21:05:43 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -960,10 +960,11 @@ $entry_format = array
 
  array('journal', '. <i>_</i>', NULL),
  array('booktitle', '. In <i>_</i>', NULL),
+ array('type', '. _', NULL),
 
- array('volume', ', volume _', NULL),
- array('number', ', number _', NULL),
- array('pages',  ', pages _', NULL),
+ array('volume', ', vol _', NULL),
+ array('number', ', no _', NULL),
+ array('pages',  ', pp _', NULL),
 
  array('address', ', _', NULL),
  array('month', ', _', NULL),
@@ -975,6 +976,7 @@ $entry_format = array
  array('publisher', '. _', NULL),
 
  array('note', '. _', NULL),
+ array('citations', '. cit _', NULL),
 
  array('keywords', '. [<small>_</small>]', NULL),
  array('url', ' _', 'print_url_field'),
