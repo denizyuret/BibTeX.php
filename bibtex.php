@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.48 2013/09/16 04:54:00 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.49 2014/01/10 13:51:29 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -996,9 +996,12 @@ function print_entry(&$entry, $entryid = NULL, $n = NULL) {
     echo h('div', array('style' => 'background-color:palegreen;'), true);
   } else if (isset($entry['note']) && preg_match('/to appear/', $entry['note'])) {
     echo h('div', array('style' => 'background-color:wheat;'), true);
+  } else if ($n & 1) {
+#    echo h('div', array('style' => 'background-color:paleturquoise;'), true);
+    echo h('div', true);
   } else {
     echo h('div', true);
-  }
+  } 
   if (isset($entryid) and isset($n)) {
     echo h_checkbox("e$n", $entryid);
   }
