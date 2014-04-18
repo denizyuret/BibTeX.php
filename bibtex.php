@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.50 2014/01/11 09:29:50 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.51 2014/04/17 16:37:13 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1138,11 +1138,11 @@ function print_extra_fields($entry, $entryid) {
   $attr2['style'] = "display:none";
   if (isset($entry['abstract'])) {
     $attr2['id'] = "abstract$entryid";
-    echo ' '.h('div', $attr2, h('blockquote', $entry['abstract']));
+    echo ' '.h('div', $attr2, h('pre', htmlspecialchars($entry['abstract'])));
   }
   if (isset($entry['annote'])) {
     $attr2['id'] = "annote$entryid";
-    echo ' '.h('div', $attr2, h('blockquote', $entry['annote']));
+    echo ' '.h('div', $attr2, h('pre', htmlspecialchars($entry['annote'])));
   }
 }
 
