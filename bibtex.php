@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.51 2014/04/17 16:37:13 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.52 2014/04/18 09:02:48 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1798,8 +1798,29 @@ $html_header = '<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
 <title>BibTeX</title>
+<style type="text/css">
+<!--
+body { 
+  font-family:Arial,sans-serif; 
+  font-size:13px;
+  white-space:nowrap;
+}
+a.local { text-decoration:none; color:black }
+a.google0 { text-decoration:none; color:black }
+a.url { font-variant:small-caps }
+a.edit { font-variant:small-caps; color:black }
+a.google { font-variant:small-caps; color:black }
+a.abstract { font-variant:small-caps; color:black }
+div.abstract { font-style:oblique }
+p.rcsid { font-size:xx-small }
+input { vertical-align:top }
+a.top { vertical-align:top }
+-->
+</style>
+
 <script type="text/javascript">
 <!--
+
 function checkAll(val) {
   with(document.selection_form) {
     for (var i = 0; i < elements.length; i++){
@@ -1903,20 +1924,6 @@ function toggleVisible(arg)
 }
 -->
 </script>
-<style type="text/css">
-<!--
-a.local { text-decoration:none; color:black }
-a.google0 { text-decoration:none; color:black }
-a.url { font-variant:small-caps }
-a.edit { font-variant:small-caps; color:black }
-a.google { font-variant:small-caps; color:black }
-a.abstract { font-variant:small-caps; color:black }
-div.abstract { font-style:oblique }
-p.rcsid { font-size:xx-small }
-input { vertical-align:top }
-a.top { vertical-align:top }
--->
-</style>
 </head>
 <body>
 ';
