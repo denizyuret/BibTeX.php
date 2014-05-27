@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.53 2014/05/27 12:23:19 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.54 2014/05/27 12:41:56 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1138,11 +1138,11 @@ function print_extra_fields($entry, $entryid) {
   $attr2['style'] = "display:none";
   if (isset($entry['abstract'])) {
     $attr2['id'] = "abstract$entryid";
-    echo ' '.h('div', $attr2, h('pre', htmlspecialchars($entry['abstract'])));
+    echo ' '.h('div', $attr2, htmlspecialchars($entry['abstract']));
   }
   if (isset($entry['annote'])) {
     $attr2['id'] = "annote$entryid";
-    echo ' '.h('div', $attr2, h('pre', htmlspecialchars($entry['annote'])));
+    echo ' '.h('div', $attr2, htmlspecialchars($entry['annote']));
   }
 }
 
@@ -1813,7 +1813,7 @@ a.url { font-variant:small-caps }
 a.edit { font-variant:small-caps; color:black }
 a.google { font-variant:small-caps; color:black }
 a.abstract { font-variant:small-caps; color:black }
-div.abstract { font-style:oblique }
+div.abstract { font-style:oblique; white-space:pre-wrap; }
 p.rcsid { font-size:xx-small }
 input { vertical-align:top }
 a.top { vertical-align:top }
