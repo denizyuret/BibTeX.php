@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.52 2014/04/18 09:02:48 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.53 2014/05/27 12:23:19 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -667,7 +667,7 @@ AuthUserFile /etc/.htpasswd
 AuthGroupFile /dev/null
 Require valid-user
 ');
-	  $url = "/bib/$dir/" . urlencode($name);
+	  $url = "/bib/$dir/" . rawurlencode($name);
 	  if (!isset($entry['url'])) {
 	    $entry['url'] = $url;
 	  } elseif (!is_array($entry['url'])) {
@@ -704,7 +704,7 @@ function upload_dir($entry) {
     $author = str_replace(' ', '', $author); 
     if ($author == '') { $author = 'unknown'; } 
   }
-  return urlencode($author) . "/" . urlencode($citekey);
+  return rawurlencode($author) . "/" . rawurlencode($citekey);
 }
 
 function asciify($str) {
@@ -978,7 +978,7 @@ $entry_format = array
  array('note', '. _', NULL),
  array('citations', '. cit _', NULL),
 
- array('keywords', '. [<small>_</small>]', NULL),
+ array('keywords', '. [<span class="keyword">_</span>]', NULL),
  array('url', ' _', 'print_url_field'),
 
 # array('abstract', '<blockquote><small><b>Abstract:</b> _ </small></blockquote>', NULL),
@@ -1106,7 +1106,7 @@ function print_extra_fields($entry, $entryid) {
   }
   if (isset($entry['annote'])) {
     $attr1['onclick'] = "toggleVisible('annote$entryid');return(false);";
-    echo ' '.h('a', $attr1, 'notes');
+    echo ' '.h('a', $attr1, 'annote');
   }
 
   /* always add the standard google urls */
@@ -1169,7 +1169,7 @@ function google_key($entry) {
       (isset($entry['editor']) ? $entry['editor'] : '');
     if (is_array($author)) $author = $author[0];
     $title = $entry['title'];
-    return urlencode("\"$title\" $author");
+    return rawurlencode("\"$title\" $author");
 }
 
 
@@ -1473,7 +1473,7 @@ function h_get($txt, $vars, $attr = NULL) {
   $url = "$_SERVER[PHP_SELF]?";
   foreach($vars as $name => $value) {
     if ($url[strlen($url)-1] != '?') $url .= '&';
-    $url .= urlencode($name) . '=' . urlencode($value);
+    $url .= rawurlencode($name) . '=' . rawurlencode($value);
   }
   return h_a($txt, $url, $attr);
 }
@@ -1804,7 +1804,9 @@ body {
   font-family:Arial,sans-serif; 
   font-size:13px;
   white-space:nowrap;
+  /* line-height:1.5; */
 }
+.keyword { font-variant:small-caps; color:black }
 a.local { text-decoration:none; color:black }
 a.google0 { text-decoration:none; color:black }
 a.url { font-variant:small-caps }
