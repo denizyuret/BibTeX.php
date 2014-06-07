@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.54 2014/05/27 12:41:56 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.55 2014/05/27 21:54:37 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -1070,9 +1070,9 @@ function print_title_field(&$entry, $field, $value) {
   $url = isset($entry['url']) ? $entry['url'] : NULL;
   if (is_array($url)) $url = $url[0];
   if (isset($url)) {
-    echo h_a($txt, $url);
+    echo h_a($txt, $url, array('target' => '_blank'));
   } else {
-    echo h_a($txt, google_url($entry), array('class' => 'google0'));
+    echo h_a($txt, google_url($entry), array('class' => 'google0', 'target' => '_blank'));
   }
 }
 
@@ -1083,6 +1083,7 @@ function print_url_field(&$entry, $field, $value) {
       for ($i = 0; $i < count($value); $i++) {
 	$url = $value[$i];
 	$attr['href'] = htmlspecialchars($url);
+	$attr['target'] = '_blank';
 	$text = 'url';
 	if (preg_match('/\.pdf$/i', $url)) { $text = 'pdf'; }
 	elseif (preg_match('/\.ps(\.gz)?$/i', $url)) { $text = 'ps'; }
