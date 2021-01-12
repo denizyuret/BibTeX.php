@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.58 2018/05/27 10:47:19 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.59 2021/01/12 08:36:11 dyuret Exp $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
