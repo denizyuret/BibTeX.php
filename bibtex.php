@@ -1,5 +1,5 @@
 <?php // -*- mode: PHP; mode: Outline-minor; outline-regexp: "/[*][*]+"; -*-
-define('rcsid', 'x$Id: bibtex.php,v 1.57 2014/08/07 17:20:30 dyuret Exp dyuret $');
+define('rcsid', 'x$Id: bibtex.php,v 1.58 2018/05/27 10:47:19 dyuret Exp dyuret $');
 
 /** MySQL parameters.
  * To use this program you need to create a database table in mysql with:
@@ -323,7 +323,7 @@ function bibtex($ids = NULL) {
 	}
 	$val = $valstr;
       }
-      printf("    %s = \"%s\",\n", $key, utf2latex($val));
+      printf("    %s = {%s},\n", $key, utf2latex($val));
      }
     printf("}\n\n");
   }
